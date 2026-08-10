@@ -12,21 +12,67 @@ maturity gates, and mandatory partition filters.
 
 ## Setup
 
+### 1. Install
+
 ```bash
 npm install
-npm run build
 ```
 
+### 2. Authenticate
+
 Authentication uses Application Default Credentials — the server never handles
-credentials itself:
+credentials itself, and none are stored in this repo:
 
 ```bash
 gcloud auth application-default login
 # or point GOOGLE_APPLICATION_CREDENTIALS at a service-account key
 ```
 
-The account needs **BigQuery Job User** on the project and **Data Viewer** on
-the dataset.
+Your account needs **two** roles, and one is not enough on its own:
+
+| Role | Scope | Why |
+|---|---|---|
+| BigQuery Job User | project | Permission to *run* queries |
+| BigQuery Data Viewer | dataset | Permission to *read* the tables |
+
+Data Viewer alone is the usual near-miss: you can see the schema, and every
+query fails.
+
+### 3. Point it at your dataset
+
+```bash
+cp .env.example .env      # then edit, or just export the variables
+export SHOPDECK_BQ_PROJECT=blitzscale-prod-project
+export SHOPDECK_BQ_DATASET=nushop
+```
+
+### 4. Preflight
+
+```bash
+npm run check
+```
+
+This walks the exact path the server takes — credentials, project, dataset,
+region, every expected table and its partition column, then a dry-run query that
+bills nothing — and prints the specific fix for whatever is wrong. Run it before
+touching any client config; it turns the two failures that produce misleading
+errors into plain statements:
+
+- **Region mismatch.** If your dataset lives in `asia-south1` and the server is
+  configured for `US`, jobs get created in one region and polled in another, and
+  BigQuery reports `Not found: Job` — which reads like a bug, not a config
+  error. The check reads the dataset's real region and tells you the value to
+  set. **Given ShopDeck operates out of Bengaluru, expect `asia-south1` rather
+  than the `US` default.**
+- **Missing Job User.** Reported as "cannot run queries" with the role to grant,
+  rather than a raw 403.
+
+### 5. Build and register
+
+```bash
+npm run build
+npm run inspect      # optional: exercise the tools interactively first
+```
 
 ### Configuration
 
@@ -47,13 +93,19 @@ the dataset.
     "shopdeck": {
       "command": "node",
       "args": ["/absolute/path/to/mcp-servers/shopdeck-onboarding/dist/index.js"],
-      "env": { "SHOPDECK_BQ_PROJECT": "blitzscale-prod-project" }
+      "env": {
+        "SHOPDECK_BQ_PROJECT": "blitzscale-prod-project",
+        "SHOPDECK_BQ_DATASET": "nushop",
+        "SHOPDECK_BQ_LOCATION": "asia-south1"
+      }
     }
   }
 }
 ```
 
-Verify interactively with `npm run inspect`.
+Set `SHOPDECK_BQ_LOCATION` to whatever `npm run check` reported — the client
+environment does not inherit your shell, so exporting it in a terminal is not
+enough.
 
 ## Conventions shared by every tool
 

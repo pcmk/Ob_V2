@@ -10,6 +10,7 @@
     "dist"
   ],
   "scripts": {
+    "check": "node scripts/check-connection.mjs",
     "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
     "watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
