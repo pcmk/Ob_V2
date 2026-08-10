@@ -1,0 +1,30 @@
+{
+  "name": "shopdeck-onboarding-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing the ShopDeck seller-onboarding funnel (BigQuery nushop dataset) as tools.",
+  "type": "module",
+  "bin": {
+    "shopdeck-onboarding-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
+    "watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^7.9.1",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

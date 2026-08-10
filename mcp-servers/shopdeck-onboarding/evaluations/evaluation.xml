@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Evaluation set for the shopdeck-onboarding MCP server.
+
+  VERIFICATION STATUS -- read before using this file.
+
+  Questions 1-4 are answered from the server's own domain reference
+  (shopdeck_describe_schema). Their answers are deterministic, stable, and
+  verified against src/domain.ts. They test whether the agent orients itself
+  before querying, which is where most wrong numbers in this domain start.
+
+  Questions 5-10 depend on live BigQuery data. They were written against the
+  real schema, but the environment they were authored in had no BigQuery access,
+  so their answers are marked UNVERIFIED. Do not use them as a scored eval until
+  someone with dataset access solves each one and replaces the placeholder with
+  the observed value. Fabricated answers would be worse than missing ones.
+
+  To verify: run each question against the server, confirm the answer is stable
+  (re-run a day later and check it has not moved), then paste it in. Prefer
+  answers anchored on closed historical windows -- an answer phrased against
+  "the last 30 days" will drift and fail on the next run.
+-->
+<evaluation>
+
+  <qa_pair>
+    <question>In the ShopDeck onboarding funnel, a seller has completed the task that verifies pricing matches across channels. What is the task type name of the very next step in the canonical execution order?</question>
+    <answer>fund_transfer</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>A POC team owns the task for registering or transferring a seller's domain. How many of the twelve canonical onboarding tasks does that same team own in total?</question>
+    <answer>3</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>An analyst filters seller_journey_milestones on step_name = 'Catalogue' and reports catalogue completion counts. Which two other step_name values should have been included for that milestone? Answer with both values separated by a comma and a space, in the order they appear in the server's milestone alias reference.</question>
+    <answer>Catalogue Creation, Catalogue Sharing</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>A ticket created on 5 July 2026 shows its fund_transfer task created within seconds of meta_setup completing. Is this a bug or expected behaviour? Answer with one word: bug or expected.</question>
+    <answer>expected</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Among sellers whose blocking step is fund_transfer and who have been blocked for more than fourteen days, how many were never called even once on that blocking task? Use the diagnosis classification rather than counting calls by hand.</question>
+    <answer>UNVERIFIED</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Consider ticket cohorts created in the calendar month of June 2026. What was the fourteen-day conversion rate to meta_setup for the cohort week beginning Monday 8 June 2026, rounded to three decimal places?</question>
+    <answer>UNVERIFIED</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Across all POCs, which single task type had the worst SLA adherence rate over the thirty days ending 31 July 2026, using the server's default SLA thresholds and a minimum of five evaluated tasks? Answer with the task type name.</question>
+    <answer>UNVERIFIED</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Find tickets created after the CRM enforcement deploy where the fund_transfer task does not exist at all even though meta_setup completed more than seventy-two hours earlier. How many such tickets are there?</question>
+    <answer>UNVERIFIED</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For tickets created in July 2026, compare the median hours between meta_setup completion and fund_transfer completion for pre-deploy versus post-deploy tickets. Which era has the higher median, and is the difference greater than forty-eight hours? Answer in the form "era, yes" or "era, no".</question>
+    <answer>UNVERIFIED</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Identify the POC who completed the most cagd tasks in the seven days ending 31 July 2026. What was their median turnaround in hours, rounded to one decimal place?</question>
+    <answer>UNVERIFIED</answer>
+  </qa_pair>
+
+</evaluation>
