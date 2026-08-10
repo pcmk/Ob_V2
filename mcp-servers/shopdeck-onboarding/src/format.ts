@@ -2,24 +2,38 @@
  * Response shaping.
  *
  * Every data tool answers with the same envelope so the model never has to
- * learn a per-tool result shape: a compact markdown table it can read directly,
- * plus `structuredContent` carrying the rows for programmatic use.
+ * learn a per-tool result shape. `response_format` selects the text
+ * representation -- markdown for reading, json for programmatic use -- while
+ * `structuredContent` always carries the rows either way.
  */
 
 import { z } from "zod";
 import { CostLimitError, formatBytes, type QueryResult } from "./bigquery.js";
 
+/** Shared `response_format` argument. Declared once, reused by every data tool. */
+export const responseFormatArg = z
+  .enum(["markdown", "json"])
+  .default("markdown")
+  .describe(
+    "Text representation: 'markdown' for a readable table, 'json' for the raw rows. structuredContent is populated either way.",
+  );
+
 /** Shared output schema for every tool that returns rows. */
 export const rowsOutputShape = {
-  rows: z.array(z.record(z.any())).describe("Result rows."),
-  row_count: z.number().describe("Number of rows returned in this response."),
-  truncated: z
-    .boolean()
-    .describe("True when the result was clipped by the row limit; narrow the filters or page."),
+  rows: z.array(z.record(z.unknown())).describe("Result rows."),
+  count: z.number().describe("Rows returned in this response."),
+  total_count: z
+    .number()
+    .nullable()
+    .describe(
+      "Total matching rows, when known. Null for paginated queries: counting the full set would double the scan cost.",
+    ),
+  offset: z.number().describe("Offset this page started at."),
+  has_more: z.boolean().describe("True when more rows exist beyond this page."),
   next_offset: z
     .number()
     .nullable()
-    .describe("Offset to pass back for the next page, or null when there is no more data."),
+    .describe("Offset to request next, or null when there is no more data."),
   notes: z
     .array(z.string())
     .describe("Caveats that materially affect how these numbers should be read."),
@@ -30,6 +44,20 @@ export interface ToolResponse {
   content: { type: "text"; text: string }[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
+}
+
+export interface PageSpec {
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Paginated tools request one row more than they intend to return. If it comes
+ * back, more data exists -- which establishes has_more without the second
+ * COUNT(*) query a total would require.
+ */
+export function probeLimit(limit: number): number {
+  return limit + 1;
 }
 
 /** Render rows as a markdown table, capped so a wide result cannot flood context. */
@@ -64,34 +92,61 @@ function toMarkdownTable(rows: Record<string, unknown>[], maxRows = 50): string 
 export interface RowsResponseOptions {
   /** Caveats the reader needs in order not to misread the numbers. */
   notes?: string[];
-  /** Offset that produced this page, when the tool paginates. */
-  offset?: number;
-  limit?: number;
-  /** Prose shown above the table. */
+  /** Present when the tool paginates; the result is assumed to hold limit+1 rows. */
+  page?: PageSpec;
+  /** Prose shown above the table in markdown mode. */
   summary?: string;
+  format?: "markdown" | "json";
 }
 
 export function rowsResponse(
   result: QueryResult,
   options: RowsResponseOptions = {},
 ): ToolResponse {
-  const { notes = [], offset, limit, summary } = options;
+  const { notes = [], page, summary, format = "markdown" } = options;
 
-  const nextOffset =
-    offset !== undefined && limit !== undefined && result.rows.length === limit
-      ? offset + limit
-      : null;
+  let rows = result.rows;
+  let hasMore = result.truncated;
+  let offset = 0;
+  let nextOffset: number | null = null;
+
+  if (page) {
+    offset = page.offset;
+    hasMore = rows.length > page.limit;
+    if (hasMore) rows = rows.slice(0, page.limit);
+    nextOffset = hasMore ? page.offset + page.limit : null;
+  }
 
   const allNotes = [...notes];
-  if (result.truncated) {
+  if (hasMore) {
     allNotes.push(
-      "Result was clipped by the row limit. Narrow the filters or page with offset to see the rest.",
+      page
+        ? `More rows exist. Request offset ${nextOffset} for the next page.`
+        : "Result was clipped by the row limit. Narrow the filters to see the rest.",
     );
+  }
+
+  const structured: Record<string, unknown> = {
+    rows,
+    count: rows.length,
+    total_count: page ? null : rows.length,
+    offset,
+    has_more: hasMore,
+    next_offset: nextOffset,
+    notes: allNotes,
+    bytes_processed: formatBytes(result.bytesProcessed),
+  };
+
+  if (format === "json") {
+    return {
+      content: [{ type: "text", text: JSON.stringify(structured, null, 2) }],
+      structuredContent: structured,
+    };
   }
 
   const parts = [
     summary,
-    toMarkdownTable(result.rows),
+    toMarkdownTable(rows),
     allNotes.length > 0
       ? `\n**Read this before quoting the numbers**\n${allNotes.map((n) => `- ${n}`).join("\n")}`
       : undefined,
@@ -99,14 +154,7 @@ export function rowsResponse(
 
   return {
     content: [{ type: "text", text: parts.join("\n\n") }],
-    structuredContent: {
-      rows: result.rows,
-      row_count: result.rows.length,
-      truncated: result.truncated,
-      next_offset: nextOffset,
-      notes: allNotes,
-      bytes_processed: formatBytes(result.bytesProcessed),
-    },
+    structuredContent: structured,
   };
 }
 
@@ -122,8 +170,8 @@ export function errorResponse(message: string, hints: string[] = []): ToolRespon
 
 /**
  * Wrap a handler so no exception escapes as an opaque failure. BigQuery's own
- * errors are often precise enough to act on, so they are passed through with a
- * targeted hint attached.
+ * messages are usually precise enough to act on, so they are surfaced with a
+ * targeted hint attached rather than replaced.
  */
 export async function safeHandler(
   fn: () => Promise<ToolResponse>,

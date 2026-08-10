@@ -9,6 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "./context.js";
 import {
   errorResponse,
+  responseFormatArg,
   rowsOutputShape,
   rowsResponse,
   safeHandler,
@@ -41,8 +42,9 @@ export function registerRawTools(server: McpServer, ctx: ToolContext): void {
           .int()
           .min(1)
           .max(1000)
-          .default(200)
-          .describe("Maximum rows returned to the caller."),
+          .default(50)
+          .describe("Maximum rows returned to the caller. has_more reports whether the query produced more."),
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -52,7 +54,7 @@ export function registerRawTools(server: McpServer, ctx: ToolContext): void {
         openWorldHint: true,
       },
     },
-    async ({ sql, dry_run, limit }): Promise<ToolResponse> =>
+    async ({ sql, dry_run, limit, response_format }): Promise<ToolResponse> =>
       safeHandler(async () => {
         const failure = guardReadOnlySql(sql);
         if (failure) return errorResponse(failure.reason, [failure.hint]);
@@ -76,8 +78,10 @@ export function registerRawTools(server: McpServer, ctx: ToolContext): void {
             ],
             structuredContent: {
               rows: [],
-              row_count: 0,
-              truncated: false,
+              count: 0,
+              total_count: null,
+              offset: 0,
+              has_more: false,
               next_offset: null,
               notes: [withinBudget ? "within_budget" : "over_budget"],
               bytes_processed: formatBytes(bytes),
@@ -87,6 +91,7 @@ export function registerRawTools(server: McpServer, ctx: ToolContext): void {
 
         const result = await bq.query(sql, {}, { maxRows: rowLimit });
         return rowsResponse(result, {
+          format: response_format,
           notes: [
             "Hand-written SQL bypasses the correctness rules the purpose-built tools apply: era splits, milestone alias merging, task de-duplication and maturity gates. Confirm which of those your query needs.",
           ],

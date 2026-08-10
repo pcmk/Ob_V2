@@ -6,7 +6,14 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "./context.js";
-import { rowsOutputShape, rowsResponse, safeHandler, type ToolResponse } from "../format.js";
+import {
+  probeLimit,
+  responseFormatArg,
+  rowsOutputShape,
+  rowsResponse,
+  safeHandler,
+  type ToolResponse,
+} from "../format.js";
 import {
   CRM_DEPLOY_TS_UTC,
   MILESTONE_ALIASES,
@@ -36,8 +43,8 @@ const limitArg = z
   .int()
   .min(1)
   .max(1000)
-  .default(200)
-  .describe("Maximum rows to return.");
+  .default(50)
+  .describe("Maximum rows to return per page.");
 
 const offsetArg = z
   .number()
@@ -71,7 +78,11 @@ export function registerJourneyTools(server: McpServer, ctx: ToolContext): void 
         "Reconstruct the full onboarding journey for one or more sellers: all 12 steps per ticket in execution order, with assigned POC, status, timestamps in IST, how long each task sat open, the dead air since the previous step closed, and call activity per task. " +
         "Steps are generated from the canonical task list rather than from the task table, so a task that was never created still appears with status DOES_NOT_EXIST -- that absence is a real failure mode (the CRM never generated it), not missing data. " +
         "This is the right first call when investigating why a seller stalled or why an escalation was raised.",
-      inputSchema: { seller_ids: sellerIds, lookback_months: lookback },
+      inputSchema: {
+        seller_ids: sellerIds,
+        lookback_months: lookback,
+        response_format: responseFormatArg,
+      },
       outputSchema: rowsOutputShape,
       annotations: {
         readOnlyHint: true,
@@ -80,7 +91,7 @@ export function registerJourneyTools(server: McpServer, ctx: ToolContext): void 
         openWorldHint: true,
       },
     },
-    async ({ seller_ids, lookback_months }): Promise<ToolResponse> =>
+    async ({ seller_ids, lookback_months, response_format }): Promise<ToolResponse> =>
       safeHandler(async () => {
         const m = months(lookback_months);
         const sql = `
@@ -178,6 +189,7 @@ ORDER BY g.seller_id, g.ticket_id, g.step`;
 
         return rowsResponse(result, {
           notes,
+          format: response_format,
           summary: `Journey grid for ${found.size} of ${seller_ids.length} requested seller(s).`,
         });
       }),
@@ -213,6 +225,7 @@ ORDER BY g.seller_id, g.ticket_id, g.step`;
         lookback_months: lookback,
         limit: limitArg,
         offset: offsetArg,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -282,12 +295,12 @@ LEFT JOIN ${bq.table("users")} web ON t.website_poc    = web._id
 LEFT JOIN ${bq.table("users")} qc  ON t.qc_poc         = qc._id
 WHERE ${where.join("\n  AND ")}
 ORDER BY t.created_at DESC
-LIMIT ${limit} OFFSET ${offset}`;
+LIMIT ${probeLimit(limit)} OFFSET ${offset}`;
 
-        const result = await bq.query(sql, params, { maxRows: limit });
+        const result = await bq.query(sql, params, { maxRows: probeLimit(limit) });
         return rowsResponse(result, {
-          limit,
-          offset,
+          page: { limit, offset },
+          format: args.response_format,
           notes: [
             "A seller appearing twice re-onboarded. Do not collapse the rows -- they are separate journeys.",
           ],
@@ -327,6 +340,7 @@ LIMIT ${limit} OFFSET ${offset}`;
         lookback_months: lookback,
         limit: limitArg,
         offset: offsetArg,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -390,12 +404,12 @@ FROM ${bq.table("ob_tasks")} ot
 LEFT JOIN ${bq.table("users")} u ON ot.assigned_poc = u._id
 WHERE ${where.join("\n  AND ")}
 ORDER BY ot.created_at DESC
-LIMIT ${limit} OFFSET ${offset}`;
+LIMIT ${probeLimit(limit)} OFFSET ${offset}`;
 
-        const result = await bq.query(sql, params, { maxRows: limit });
+        const result = await bq.query(sql, params, { maxRows: probeLimit(limit) });
         return rowsResponse(result, {
-          limit,
-          offset,
+          page: { limit, offset },
+          format: args.response_format,
           notes: [
             "The partition filter constrains task CREATION date. A task completed recently may have been created long before the window; widen lookback_months if completions look missing.",
             "Duplicate rows of one task type on a ticket are real -- they come from the stuck-task recovery path.",
@@ -421,6 +435,7 @@ LIMIT ${limit} OFFSET ${offset}`;
         lookback_months: lookback,
         limit: limitArg,
         offset: offsetArg,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -467,12 +482,12 @@ JOIN ${bq.table("ob_tickets")} t
   ON sm.ticket_id = t.id AND ${partitionWindow("t", m)}
 WHERE ${where.join("\n  AND ")}
 ORDER BY t.seller_id, sm.ticket_id, sm.updated_at
-LIMIT ${limit} OFFSET ${offset}`;
+LIMIT ${probeLimit(limit)} OFFSET ${offset}`;
 
-        const result = await bq.query(sql, params, { maxRows: limit });
+        const result = await bq.query(sql, params, { maxRows: probeLimit(limit) });
         return rowsResponse(result, {
-          limit,
-          offset,
+          page: { limit, offset },
+          format: args.response_format,
           notes: [
             "raw_step_name is kept alongside the merged milestone so alias drift stays visible.",
             "A seller is launched only when the launch milestone reads 'completed'.",
@@ -495,6 +510,7 @@ LIMIT ${limit} OFFSET ${offset}`;
         lookback_months: lookback,
         limit: limitArg,
         offset: offsetArg,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -548,12 +564,12 @@ JOIN ${bq.table("ob_tasks")} ot
   ON ec.entity_id = ot.id AND ${partitionWindow("ot", m)}
 WHERE ${where.join("\n  AND ")}
 ORDER BY ot.seller_id, ec.created_at
-LIMIT ${limit} OFFSET ${offset}`;
+LIMIT ${probeLimit(limit)} OFFSET ${offset}`;
 
-        const result = await bq.query(sql, params, { maxRows: limit });
+        const result = await bq.query(sql, params, { maxRows: probeLimit(limit) });
         return rowsResponse(result, {
-          limit,
-          offset,
+          page: { limit, offset },
+          format: args.response_format,
           notes: [
             "Zero rows for a seller means no call was ever placed on their tasks -- an ops finding, not a data gap.",
           ],
@@ -575,6 +591,7 @@ LIMIT ${limit} OFFSET ${offset}`;
           .default(false)
           .describe("Return only the most recently recorded offer per seller."),
         lookback_months: lookback,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -584,7 +601,7 @@ LIMIT ${limit} OFFSET ${offset}`;
         openWorldHint: true,
       },
     },
-    async ({ seller_ids, latest_only, lookback_months }): Promise<ToolResponse> =>
+    async ({ seller_ids, latest_only, lookback_months, response_format }): Promise<ToolResponse> =>
       safeHandler(async () => {
         const m = months(lookback_months);
         const offerRows = OFFERS.map(
@@ -632,7 +649,7 @@ ORDER BY r.seller_id, r.recorded_at DESC`;
             "An UNMAPPED offer_id appeared. A new offer has shipped and this server's hardcoded mapping needs updating in src/domain.ts.",
           );
         }
-        return rowsResponse(result, { notes });
+        return rowsResponse(result, { notes, format: response_format });
       }),
   );
 }

@@ -1,13 +1,17 @@
 /**
- * The orientation tool. Serves the domain model so the agent can plan a query
- * without guessing at table names, task order, or the business rules that make
- * a technically-correct query still wrong.
+ * The orientation surface. Serves the domain model so the agent can plan a
+ * query without guessing at table names, task order, or the business rules that
+ * make a technically-correct query still wrong.
+ *
+ * Exposed twice on purpose: as a tool for agents that reach for tools, and as a
+ * resource for clients that prefer to attach reference material directly.
  */
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "./context.js";
-import { safeHandler, type ToolResponse } from "../format.js";
+import { responseFormatArg, safeHandler, type ToolResponse } from "../format.js";
+import type { Config } from "../config.js";
 import {
   BUSINESS_RULES,
   CARDINALITY_NOTES,
@@ -48,7 +52,7 @@ const TABLE_DOCS: Record<string, { grain: string; keyColumns: string[] }> = {
     grain: "Many rows per ticket: 5 milestone types, plus alias spellings.",
     keyColumns: [
       "ticket_id",
-      "step_name -- aliased; merge per MILESTONE_ALIASES",
+      "step_name -- aliased; merge per milestone_aliases",
       "status -- filter to 'completed'",
       "updated_at -- completion time. NOT created_at",
       "created_at -- partition column",
@@ -86,7 +90,7 @@ const TABLE_DOCS: Record<string, { grain: string; keyColumns: string[] }> = {
   },
 };
 
-const TOPICS = [
+export const REFERENCE_TOPICS = [
   "all",
   "tables",
   "tasks",
@@ -97,24 +101,90 @@ const TOPICS = [
   "pitfalls",
 ] as const;
 
+export type ReferenceTopic = (typeof REFERENCE_TOPICS)[number];
+
+/** Assemble the domain reference. Shared by the tool and the resource. */
+export function buildReference(
+  topic: ReferenceTopic,
+  config: Config,
+): Record<string, unknown> {
+  const want = (name: string) => topic === "all" || topic === name;
+  const reference: Record<string, unknown> = {};
+
+  if (want("tables")) {
+    reference.tables = Object.fromEntries(
+      Object.entries(TABLE_DOCS).map(([name, doc]) => [
+        name,
+        {
+          fully_qualified: `${config.projectId}.${config.dataset}.${name}`,
+          partitioned: (PARTITIONED_TABLES as readonly string[]).includes(name),
+          ...doc,
+        },
+      ]),
+    );
+    reference.partition_rule =
+      `Partitioned tables (${PARTITIONED_TABLES.join(", ")}) reject queries without a created_at filter. ` +
+      `Unpartitioned: ${UNPARTITIONED_TABLES.join(", ")}. Filter join-side tables inside a CTE or in the ON clause -- ` +
+      "a WHERE clause after the JOIN is evaluated too late.";
+  }
+
+  if (want("tasks")) {
+    reference.task_order = TASK_ORDER;
+    reference.default_sla_hours = DEFAULT_SLA_HOURS;
+    reference.sla_caveat =
+      "These SLA hours are placeholders, not ops-signed-off targets. No per-task SLA is documented in the data model. Override them per call.";
+  }
+
+  if (want("milestones")) {
+    reference.milestone_aliases = MILESTONE_ALIASES;
+    reference.milestone_note =
+      "Milestones are 5 coarse stages; tasks are the 12 granular steps. Launch is confirmed by the Launch milestone reaching 'completed', not by all tasks completing.";
+  }
+
+  if (want("pocs")) {
+    reference.poc_ownership = POC_OWNERSHIP;
+    reference.poc_note =
+      "Ticket-level POC fields carry the nominal owner. ob_tasks.assigned_poc carries whoever actually worked the task; the two diverge when a ticket is reassigned mid-flow.";
+  }
+
+  if (want("offers")) {
+    reference.offers = OFFERS;
+    reference.offer_note =
+      "Offer names exist only in code. An offer_id absent from this list means a new offer shipped and this mapping is stale.";
+  }
+
+  if (want("business_rules")) {
+    reference.business_rules = BUSINESS_RULES;
+    reference.crm_deploy_ts_utc = CRM_DEPLOY_TS_UTC;
+  }
+
+  if (want("pitfalls")) {
+    reference.cardinality_notes = CARDINALITY_NOTES;
+  }
+
+  return reference;
+}
+
 export function registerReferenceTools(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
     "shopdeck_describe_schema",
     {
       title: "Describe the onboarding data model",
       description:
-        "Return the ShopDeck onboarding funnel's structure: tables and their grain, the 12 tasks in execution order, milestone aliases, POC ownership, offer id-to-name mapping, the business rules that change how results must be read (notably the 48-hour meta_setup to fund_transfer policy), and the cardinality traps that silently produce wrong numbers. Call this before composing any non-trivial query.",
+        "Return the ShopDeck onboarding funnel's structure: tables and their grain, the 12 tasks in execution order, milestone aliases, POC ownership, offer id-to-name mapping, the business rules that change how results must be read (notably the 48-hour meta_setup to fund_transfer policy), and the cardinality traps that silently produce wrong numbers. " +
+        "Returns an object keyed by topic; every value is descriptive text or a list. Call this before composing any non-trivial query.",
       inputSchema: {
         topic: z
-          .enum(TOPICS)
+          .enum(REFERENCE_TOPICS)
           .default("all")
           .describe("Restrict the answer to one area. Defaults to everything."),
+        response_format: responseFormatArg,
       },
       outputSchema: {
         project: z.string(),
         dataset: z.string(),
         topic: z.string(),
-        reference: z.record(z.any()).describe("The requested domain reference."),
+        reference: z.record(z.unknown()).describe("The requested domain reference."),
       },
       annotations: {
         readOnlyHint: true,
@@ -123,79 +193,60 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext): voi
         openWorldHint: false,
       },
     },
-    async ({ topic }): Promise<ToolResponse> =>
+    async ({ topic, response_format }): Promise<ToolResponse> =>
       safeHandler(async () => {
-        const want = (name: string) => topic === "all" || topic === name;
-        const reference: Record<string, unknown> = {};
+        const reference = buildReference(topic, ctx.config);
+        const structured = {
+          project: ctx.config.projectId,
+          dataset: ctx.config.dataset,
+          topic,
+          reference,
+        };
 
-        if (want("tables")) {
-          reference.tables = Object.fromEntries(
-            Object.entries(TABLE_DOCS).map(([name, doc]) => [
-              name,
-              {
-                fully_qualified: `${ctx.config.projectId}.${ctx.config.dataset}.${name}`,
-                partitioned: (PARTITIONED_TABLES as readonly string[]).includes(name),
-                ...doc,
-              },
-            ]),
-          );
-          reference.partition_rule =
-            `Partitioned tables (${PARTITIONED_TABLES.join(", ")}) reject queries without a created_at filter. ` +
-            `Unpartitioned: ${UNPARTITIONED_TABLES.join(", ")}. Filter join-side tables inside a CTE or in the ON clause -- ` +
-            "a WHERE clause after the JOIN is evaluated too late.";
-        }
-
-        if (want("tasks")) {
-          reference.task_order = TASK_ORDER;
-          reference.default_sla_hours = DEFAULT_SLA_HOURS;
-          reference.sla_caveat =
-            "These SLA hours are placeholders, not ops-signed-off targets. No per-task SLA is documented in the data model. Override them per call.";
-        }
-
-        if (want("milestones")) {
-          reference.milestone_aliases = MILESTONE_ALIASES;
-          reference.milestone_note =
-            "Milestones are 5 coarse stages; tasks are the 12 granular steps. Launch is confirmed by the Launch milestone reaching 'completed', not by all tasks completing.";
-        }
-
-        if (want("pocs")) {
-          reference.poc_ownership = POC_OWNERSHIP;
-          reference.poc_note =
-            "Ticket-level POC fields carry the nominal owner. ob_tasks.assigned_poc carries whoever actually worked the task; the two diverge when a ticket is reassigned mid-flow.";
-        }
-
-        if (want("offers")) {
-          reference.offers = OFFERS;
-          reference.offer_note =
-            "Offer names exist only in code. An offer_id absent from this list means a new offer shipped and this mapping is stale.";
-        }
-
-        if (want("business_rules")) {
-          reference.business_rules = BUSINESS_RULES;
-          reference.crm_deploy_ts_utc = CRM_DEPLOY_TS_UTC;
-        }
-
-        if (want("pitfalls")) {
-          reference.cardinality_notes = CARDINALITY_NOTES;
-        }
-
-        const summary = [
-          `**ShopDeck onboarding** — \`${ctx.config.projectId}.${ctx.config.dataset}\` (topic: ${topic})`,
-          "",
-          "```json",
-          JSON.stringify(reference, null, 2),
-          "```",
-        ].join("\n");
+        const text =
+          response_format === "json"
+            ? JSON.stringify(structured, null, 2)
+            : [
+                `**ShopDeck onboarding** — \`${ctx.config.projectId}.${ctx.config.dataset}\` (topic: ${topic})`,
+                "",
+                "```json",
+                JSON.stringify(reference, null, 2),
+                "```",
+              ].join("\n");
 
         return {
-          content: [{ type: "text", text: summary }],
-          structuredContent: {
-            project: ctx.config.projectId,
-            dataset: ctx.config.dataset,
-            topic,
-            reference,
-          },
+          content: [{ type: "text", text }],
+          structuredContent: structured,
         };
       }),
+  );
+
+  // The same reference, attachable as context by clients that support resources.
+  server.registerResource(
+    "onboarding-schema",
+    "shopdeck://schema",
+    {
+      title: "ShopDeck onboarding data model",
+      description:
+        "Tables, task order, milestone aliases, POC ownership, offers, business rules and cardinality traps for the seller-onboarding funnel.",
+      mimeType: "application/json",
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(
+            {
+              project: ctx.config.projectId,
+              dataset: ctx.config.dataset,
+              reference: buildReference("all", ctx.config),
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    }),
   );
 }

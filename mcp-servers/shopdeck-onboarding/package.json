@@ -1,10 +1,10 @@
 {
-  "name": "shopdeck-onboarding-mcp",
+  "name": "shopdeck-mcp-server",
   "version": "0.1.0",
   "description": "MCP server exposing the ShopDeck seller-onboarding funnel (BigQuery nushop dataset) as tools.",
   "type": "module",
   "bin": {
-    "shopdeck-onboarding-mcp": "dist/index.js"
+    "shopdeck-mcp-server": "dist/index.js"
   },
   "files": [
     "dist"

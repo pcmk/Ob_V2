@@ -1,6 +1,6 @@
-# ShopDeck Onboarding MCP Server
+# shopdeck-mcp-server
 
-An MCP server exposing the ShopDeck seller-onboarding funnel — the `nushop`
+An MCP server (stdio) exposing the ShopDeck seller-onboarding funnel — the `nushop`
 BigQuery dataset — as tools an agent can use without re-deriving the domain's
 correctness rules on every question.
 
@@ -44,7 +44,7 @@ the dataset.
 ```json
 {
   "mcpServers": {
-    "shopdeck-onboarding": {
+    "shopdeck": {
       "command": "node",
       "args": ["/absolute/path/to/mcp-servers/shopdeck-onboarding/dist/index.js"],
       "env": { "SHOPDECK_BQ_PROJECT": "blitzscale-prod-project" }
@@ -54,6 +54,81 @@ the dataset.
 ```
 
 Verify interactively with `npm run inspect`.
+
+## Conventions shared by every tool
+
+**`response_format`** — `markdown` (default) renders a readable table; `json`
+returns the raw rows. `structuredContent` carries the rows either way, so a
+programmatic caller never needs to parse the text.
+
+**Pagination** — listing tools take `limit` (default 50) and `offset`, and
+return `has_more` plus `next_offset`. They fetch one row beyond the limit to
+establish `has_more` exactly. `total_count` is `null` on paginated queries: a
+true total needs a second `COUNT(*)` over the same partitions, which would
+double the scan cost for a number nobody usually needs.
+
+**`notes`** — every response carries the caveats that would otherwise cause the
+numbers to be misread: maturity gates, era splits, partial days, placeholder
+SLA thresholds.
+
+## Examples
+
+**Investigating an escalation.** Start with the verdict, then get the timeline,
+then pull the evidence:
+
+```jsonc
+// 1. What is blocking them, and whose fault is it?
+{"tool": "shopdeck_diagnose_escalation",
+ "args": {"seller_ids": ["66f1a2b3c4d5e6f708192a3b"]}}
+
+// 2. The full step-by-step for the ticket behind that verdict
+{"tool": "shopdeck_get_seller_journey",
+ "args": {"seller_ids": ["66f1a2b3c4d5e6f708192a3b"]}}
+
+// 3. Every call attempt, to attach to the escalation reply
+{"tool": "shopdeck_get_calls",
+ "args": {"seller_ids": ["66f1a2b3c4d5e6f708192a3b"], "limit": 100}}
+```
+
+**POC performance.** Volume and timeliness are different questions:
+
+```jsonc
+// Worst adherence first, with your own SLA targets rather than the placeholders
+{"tool": "shopdeck_poc_sla_adherence",
+ "args": {"window_days": 30, "sla_overrides": {"cagd": 24, "gtg": 12}}}
+
+// Who is carrying the load this week
+{"tool": "shopdeck_poc_throughput", "args": {"window_days": 7}}
+
+// One POC, one task type, as JSON for further processing
+{"tool": "shopdeck_poc_sla_adherence",
+ "args": {"poc_name": "Priya", "task_types": ["cagd"], "response_format": "json"}}
+```
+
+**Funnel health.** Cohorts, stalls, and the escape hatch:
+
+```jsonc
+// Weekly conversion to fund_transfer, maturity gate applied automatically
+{"tool": "shopdeck_funnel_conversion",
+ "args": {"target_task": "fund_transfer", "conversion_days": 14,
+          "cohort_from": "2026-05-01"}}
+
+// Sellers past meta_setup but stuck before funding for over a week
+{"tool": "shopdeck_find_stuck_sellers",
+ "args": {"from_task": "meta_setup", "to_task": "fund_transfer",
+          "min_days_stuck": 7, "limit": 50}}
+
+// Check the scan size before running something broad
+{"tool": "shopdeck_run_sql",
+ "args": {"sql": "SELECT type, COUNT(*) c FROM `proj.nushop.ob_tasks` WHERE created_at >= TIMESTAMP('2026-07-01') GROUP BY type",
+          "dry_run": true}}
+```
+
+## Resources
+
+`shopdeck://schema` serves the same domain reference as
+`shopdeck_describe_schema`, for clients that prefer attaching reference material
+as context rather than calling a tool for it.
 
 ## Tools
 
@@ -106,3 +181,9 @@ recover without a human.
   `OFFERS` in `src/domain.ts` is updated. The tool flags this when it happens.
 - **SLA measurement is wall-clock, not business hours.** Work landing on a
   Friday evening burns the weekend.
+- **Input schemas are not `.strict()`.** `registerTool` takes a Zod raw shape
+  and builds the object itself, so there is no place to reject unknown keys.
+  Every field is individually constrained instead; unknown extras are ignored
+  rather than refused.
+- **`total_count` is null on paginated tools.** Computing it means a second
+  scan. `has_more` is exact, which covers the case that actually matters.

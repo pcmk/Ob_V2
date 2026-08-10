@@ -7,7 +7,14 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "./context.js";
-import { rowsOutputShape, rowsResponse, safeHandler, type ToolResponse } from "../format.js";
+import {
+  probeLimit,
+  responseFormatArg,
+  rowsOutputShape,
+  rowsResponse,
+  safeHandler,
+  type ToolResponse,
+} from "../format.js";
 import {
   CRM_DEPLOY_TS_UTC,
   DEFAULT_SLA_HOURS,
@@ -59,6 +66,7 @@ export function registerAnalyticsTools(server: McpServer, ctx: ToolContext): voi
           .max(720)
           .default(48)
           .describe("Below this age, a blocking task is treated as still in progress rather than stuck."),
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -68,7 +76,12 @@ export function registerAnalyticsTools(server: McpServer, ctx: ToolContext): voi
         openWorldHint: true,
       },
     },
-    async ({ seller_ids, lookback_months, premature_hours }): Promise<ToolResponse> =>
+    async ({
+      seller_ids,
+      lookback_months,
+      premature_hours,
+      response_format,
+    }): Promise<ToolResponse> =>
       safeHandler(async () => {
         const m = months(lookback_months);
         const premature = safeInt(premature_hours, 1, 720, "premature_hours");
@@ -196,6 +209,7 @@ ORDER BY days_blocked DESC`;
 
         return rowsResponse(result, {
           notes,
+          format: response_format,
           summary: `Diagnosis for ${result.rows.length} blocked ticket(s) across ${seller_ids.length} requested seller(s).`,
         });
       }),
@@ -226,6 +240,7 @@ ORDER BY days_blocked DESC`;
           .optional()
           .describe('Per-task SLA hours, e.g. {"cagd": 24, "gtg": 12}.'),
         lookback_months: lookback,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -326,6 +341,7 @@ ORDER BY sla_adherence_rate ASC, breached DESC`;
 
         const result = await bq.query(sql, params);
         return rowsResponse(result, {
+          format: args.response_format,
           notes: [
             args.sla_overrides
               ? "SLA thresholds were overridden for this call."
@@ -350,7 +366,9 @@ ORDER BY sla_adherence_rate ASC, breached DESC`;
         to_task: z.enum(TASK_TYPES).default("fund_transfer"),
         min_days_stuck: z.number().int().min(1).max(365).default(7),
         lookback_months: lookback,
-        limit: z.number().int().min(1).max(1000).default(200),
+        limit: z.number().int().min(1).max(1000).default(50).describe("Maximum rows per page."),
+        offset: z.number().int().min(0).default(0).describe("Rows to skip, for paging."),
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -365,6 +383,7 @@ ORDER BY sla_adherence_rate ASC, breached DESC`;
         const m = months(args.lookback_months);
         const minDays = safeInt(args.min_days_stuck, 1, 365, "min_days_stuck");
         const limit = safeInt(args.limit, 1, 1000, "limit");
+        const offset = safeInt(args.offset, 0, 100_000, "offset");
 
         if (args.from_task === args.to_task) {
           throw new Error("from_task and to_task must differ.");
@@ -420,14 +439,16 @@ LEFT JOIN ${bq.table("users")} u ON ot.assigned_poc = u._id
 WHERE t.to_at IS NULL
   AND DATE_DIFF(CURRENT_DATE(), DATE(f.from_at), DAY) > ${minDays}
 ORDER BY days_since_from_task DESC
-LIMIT ${limit}`;
+LIMIT ${probeLimit(limit)} OFFSET ${offset}`;
 
         const result = await bq.query(sql, {
           from_task: args.from_task,
           to_task: args.to_task,
-        }, { maxRows: limit });
+        }, { maxRows: probeLimit(limit) });
 
         return rowsResponse(result, {
+          page: { limit, offset },
+          format: args.response_format,
           notes: [
             "The to_task match requires completion at or after the from_task, so a completion from an earlier journey cannot mask a current stall.",
             "TASK_NEVER_CREATED means the downstream task does not exist at all -- a CRM gap, not POC inaction.",
@@ -455,6 +476,7 @@ LIMIT ${limit}`;
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .describe("Earliest ticket creation date to include (YYYY-MM-DD)."),
         lookback_months: lookback,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -511,6 +533,7 @@ ORDER BY cohort_week DESC, c.ticket_era`;
         });
 
         return rowsResponse(result, {
+          format: args.response_format,
           notes: [
             `Cohorts newer than ${days} days are excluded by the maturity gate, so the most recent weeks are deliberately absent.`,
             "Split by ticket_era is kept because the CRM deploy changed when the fund_transfer task is created; pooling the eras hides that.",
@@ -532,6 +555,7 @@ ORDER BY cohort_week DESC, c.ticket_era`;
         window_days: z.number().int().min(1).max(365).default(7),
         task_types: z.array(z.enum(TASK_TYPES)).optional(),
         lookback_months: lookback,
+        response_format: responseFormatArg,
       },
       outputSchema: rowsOutputShape,
       annotations: {
@@ -573,6 +597,7 @@ ORDER BY tasks_completed DESC`;
 
         const result = await bq.query(sql, params);
         return rowsResponse(result, {
+          format: args.response_format,
           notes: [
             "Counts are task completions, not unique sellers; distinct_sellers is given alongside because the two differ when tasks are re-created.",
             "Today is a partial day and will look low. Compare whole days.",

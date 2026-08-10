@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   };
 
   const server = new McpServer(
-    { name: "shopdeck-onboarding", version: "0.1.0" },
+    { name: "shopdeck-mcp-server", version: "0.1.0" },
     {
       instructions:
         "Tools for the ShopDeck seller-onboarding funnel, backed by the nushop BigQuery dataset. " +
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
 
   // stdout carries the protocol; diagnostics must go to stderr.
   process.stderr.write(
-    `shopdeck-onboarding MCP server ready (project=${config.projectId}, dataset=${config.dataset})\n`,
+    `shopdeck-mcp-server ready (project=${config.projectId}, dataset=${config.dataset})\n`,
   );
 }
 
