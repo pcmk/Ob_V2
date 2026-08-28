@@ -4,10 +4,13 @@
 // the renderer picks up new keys automatically for random idle cycling,
 // the tray "Test emotions" menu lists them automatically, etc.
 //
-// sprite: placeholder emoji shown until real art is dropped into
-// assets/sprites/<id>.png (see assets/sprites/README.md). Once that file
-// exists the renderer will use it automatically instead of the emoji.
-//
+// sprite: the base character shown, always the panda itself (🐼) unless a
+//   dedicated PNG exists for this exact id (assets/sprites/<id>.png, see
+//   that folder's README) - once one does, it's used automatically and
+//   replaces both the emoji and the accent badge below.
+// accent: a small badge emoji shown next to the panda to convey the mood
+//   without swapping the character out for an unrelated face. null = no
+//   badge, just the animation/speech line carries the mood.
 // animation: name of a CSS animation class defined in pet.css.
 // lines: things the panda says in its speech bubble for this emotion.
 // category: "positive" | "negative" | "neutral" - used to pick a
@@ -19,6 +22,7 @@ const EMOTIONS = {
   idle: {
     label: "Idle",
     sprite: "🐼",
+    accent: null,
     animation: "anim-breathe",
     category: "neutral",
     idleWeight: 10,
@@ -26,7 +30,8 @@ const EMOTIONS = {
   },
   happy: {
     label: "Happy",
-    sprite: "😊",
+    sprite: "🐼",
+    accent: "😊",
     animation: "anim-bounce",
     category: "positive",
     idleWeight: 6,
@@ -34,7 +39,8 @@ const EMOTIONS = {
   },
   excited: {
     label: "Excited",
-    sprite: "🥳",
+    sprite: "🐼",
+    accent: "✨",
     animation: "anim-jump",
     category: "positive",
     idleWeight: 3,
@@ -42,7 +48,8 @@ const EMOTIONS = {
   },
   love: {
     label: "Loving",
-    sprite: "🥰",
+    sprite: "🐼",
+    accent: "🥰",
     animation: "anim-pulse",
     category: "positive",
     idleWeight: 2,
@@ -50,7 +57,8 @@ const EMOTIONS = {
   },
   cheer: {
     label: "Cheering",
-    sprite: "🎉",
+    sprite: "🐼",
+    accent: "🎉",
     animation: "anim-jump",
     category: "positive",
     idleWeight: 0,
@@ -58,7 +66,8 @@ const EMOTIONS = {
   },
   proud: {
     label: "Proud",
-    sprite: "😎",
+    sprite: "🐼",
+    accent: "⭐",
     animation: "anim-bounce",
     category: "positive",
     idleWeight: 1,
@@ -66,7 +75,8 @@ const EMOTIONS = {
   },
   playful: {
     label: "Playful",
-    sprite: "😄",
+    sprite: "🐼",
+    accent: "😄",
     animation: "anim-wiggle",
     category: "positive",
     idleWeight: 3,
@@ -74,7 +84,8 @@ const EMOTIONS = {
   },
   dancing: {
     label: "Dancing",
-    sprite: "🕺",
+    sprite: "🐼",
+    accent: "🎵",
     animation: "anim-dance",
     category: "positive",
     idleWeight: 1,
@@ -82,7 +93,8 @@ const EMOTIONS = {
   },
   laughing: {
     label: "Laughing",
-    sprite: "😂",
+    sprite: "🐼",
+    accent: "😂",
     animation: "anim-wiggle",
     category: "positive",
     idleWeight: 1,
@@ -90,7 +102,8 @@ const EMOTIONS = {
   },
   relaxed: {
     label: "Relaxed",
-    sprite: "😌",
+    sprite: "🐼",
+    accent: "😌",
     animation: "anim-breathe",
     category: "positive",
     idleWeight: 4,
@@ -98,7 +111,8 @@ const EMOTIONS = {
   },
   sleepy: {
     label: "Sleepy",
-    sprite: "😴",
+    sprite: "🐼",
+    accent: "😴",
     animation: "anim-breathe-slow",
     category: "neutral",
     idleWeight: 3,
@@ -106,7 +120,8 @@ const EMOTIONS = {
   },
   sleeping: {
     label: "Sleeping",
-    sprite: "💤",
+    sprite: "🐼",
+    accent: "💤",
     animation: "anim-breathe-slow",
     category: "neutral",
     idleWeight: 0,
@@ -114,7 +129,8 @@ const EMOTIONS = {
   },
   bored: {
     label: "Bored",
-    sprite: "😑",
+    sprite: "🐼",
+    accent: "😑",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 2,
@@ -122,7 +138,8 @@ const EMOTIONS = {
   },
   curious: {
     label: "Curious",
-    sprite: "🤨",
+    sprite: "🐼",
+    accent: "❓",
     animation: "anim-tilt",
     category: "neutral",
     idleWeight: 3,
@@ -130,7 +147,8 @@ const EMOTIONS = {
   },
   thinking: {
     label: "Thinking",
-    sprite: "🤔",
+    sprite: "🐼",
+    accent: "💭",
     animation: "anim-tilt",
     category: "neutral",
     idleWeight: 2,
@@ -138,7 +156,8 @@ const EMOTIONS = {
   },
   confused: {
     label: "Confused",
-    sprite: "😕",
+    sprite: "🐼",
+    accent: "❓",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 1,
@@ -146,7 +165,8 @@ const EMOTIONS = {
   },
   surprised: {
     label: "Surprised",
-    sprite: "😮",
+    sprite: "🐼",
+    accent: "❗",
     animation: "anim-jump",
     category: "neutral",
     idleWeight: 0,
@@ -154,7 +174,8 @@ const EMOTIONS = {
   },
   shy: {
     label: "Shy",
-    sprite: "😳",
+    sprite: "🐼",
+    accent: "😳",
     animation: "anim-sway",
     category: "neutral",
     idleWeight: 1,
@@ -162,7 +183,8 @@ const EMOTIONS = {
   },
   sad: {
     label: "Sad",
-    sprite: "😢",
+    sprite: "🐼",
+    accent: "😢",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 1,
@@ -170,7 +192,8 @@ const EMOTIONS = {
   },
   crying: {
     label: "Crying",
-    sprite: "😭",
+    sprite: "🐼",
+    accent: "😭",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 0,
@@ -178,7 +201,8 @@ const EMOTIONS = {
   },
   worried: {
     label: "Worried",
-    sprite: "😟",
+    sprite: "🐼",
+    accent: "😟",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 1,
@@ -186,7 +210,8 @@ const EMOTIONS = {
   },
   angry: {
     label: "Angry",
-    sprite: "😠",
+    sprite: "🐼",
+    accent: "💢",
     animation: "anim-shake",
     category: "negative",
     idleWeight: 0,
@@ -194,7 +219,8 @@ const EMOTIONS = {
   },
   scared: {
     label: "Scared",
-    sprite: "😨",
+    sprite: "🐼",
+    accent: "😨",
     animation: "anim-shake",
     category: "negative",
     idleWeight: 0,
@@ -202,7 +228,8 @@ const EMOTIONS = {
   },
   sick: {
     label: "Sick",
-    sprite: "🤒",
+    sprite: "🐼",
+    accent: "🤒",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 0,
@@ -210,7 +237,8 @@ const EMOTIONS = {
   },
   hungry: {
     label: "Hungry",
-    sprite: "🍽️",
+    sprite: "🐼",
+    accent: "🍽️",
     animation: "anim-sway",
     category: "negative",
     idleWeight: 2,
@@ -218,7 +246,8 @@ const EMOTIONS = {
   },
   thirsty: {
     label: "Thirsty",
-    sprite: "💧",
+    sprite: "🐼",
+    accent: "💧",
     animation: "anim-tilt",
     category: "negative",
     idleWeight: 0,
@@ -226,7 +255,8 @@ const EMOTIONS = {
   },
   writing: {
     label: "Writing",
-    sprite: "📝",
+    sprite: "🐼",
+    accent: "📝",
     animation: "anim-tilt",
     category: "neutral",
     idleWeight: 0,
@@ -234,7 +264,8 @@ const EMOTIONS = {
   },
   waving: {
     label: "Waving",
-    sprite: "👋",
+    sprite: "🐼",
+    accent: "👋",
     animation: "anim-wiggle",
     category: "positive",
     idleWeight: 0,
@@ -242,7 +273,8 @@ const EMOTIONS = {
   },
   determined: {
     label: "Determined",
-    sprite: "😤",
+    sprite: "🐼",
+    accent: "😤",
     animation: "anim-bounce",
     category: "positive",
     idleWeight: 1,
@@ -250,7 +282,8 @@ const EMOTIONS = {
   },
   mischievous: {
     label: "Mischievous",
-    sprite: "😏",
+    sprite: "🐼",
+    accent: "😏",
     animation: "anim-wiggle",
     category: "neutral",
     idleWeight: 1,

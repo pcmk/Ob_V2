@@ -36,13 +36,23 @@ function bounds() {
 function emitUpdate() {
   if (!onUpdate) return;
   const meta = ACTIVITIES[activity] || ACTIVITIES.idle;
+
+  // Which real-art file to look for in assets/sprites/ (falls back to the
+  // emoji if it doesn't exist yet - see that folder's README). Walking to
+  // the tree still *looks like* walking, so it borrows the "walk" art;
+  // once up there (climbing/perched/climbing back down) it borrows "tree".
+  let spriteId = activity;
+  if (activity === "tree") spriteId = phase === "approach" ? "walk" : "tree";
+
   onUpdate({
     activity,
+    phase,
     direction,
     sprite: meta.sprite,
     animation: meta.animation,
     zzz: !!meta.zzz,
     showTree: activity === "tree" && phase !== "approach",
+    spriteId,
   });
 }
 

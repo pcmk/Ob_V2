@@ -16,7 +16,7 @@ const spriteFlip = document.getElementById("sprite-flip");
 const spriteImg = document.getElementById("sprite-img");
 const spriteEmoji = document.getElementById("sprite-emoji");
 const treeBg = document.getElementById("tree-bg");
-const zzz = document.getElementById("zzz");
+const accentBadge = document.getElementById("accent-badge");
 const bubble = document.getElementById("speech-bubble");
 const bubbleText = document.getElementById("speech-text");
 const noteBtn = document.getElementById("note-btn");
@@ -26,35 +26,52 @@ let forced = false;
 let revertTimer = null;
 let bubbleTimer = null;
 
-// spriteId is only used to look up a real PNG in assets/sprites/ once one
-// exists (see that folder's README) - for pure activity baselines there's
-// no id to look up yet, so image fallback is only attempted for named
-// emotions.
-function render({ sprite, animation, direction, zzz: showZzz, showTree, spriteId }) {
+// spriteId looks up a real PNG in assets/sprites/<spriteId>.png (see that
+// folder's README); falls back to the emoji + accent badge if it doesn't
+// exist yet. The panda (sprite) never gets replaced by an unrelated face -
+// only the small accent badge changes to convey the mood, unless real art
+// exists for this exact id, in which case that full illustration is used
+// and the badge is hidden (the art already shows the expression).
+function render({ sprite, animation, direction, zzz: showZzz, showTree, spriteId, accent }) {
   spriteWrap.className = "";
   void spriteWrap.offsetWidth; // restart the animation even if it's the same class
   spriteWrap.classList.add(animation);
 
   spriteFlip.style.transform = direction < 0 ? "scaleX(-1)" : "scaleX(1)";
 
+  // Decorative emoji tree behind the panda, shown by default whenever the
+  // activity wants one. If real art exists for this exact pose (e.g. a
+  // "sitting in a tree" illustration that already draws its own branch),
+  // that loading successfully turns the decorative tree back off so the
+  // two don't double up.
+  treeBg.classList.toggle("visible", !!showTree);
+
+  function setBadge(showFallbackBadge) {
+    const text = showZzz ? "💤" : accent;
+    const visible = showFallbackBadge && !!text;
+    accentBadge.textContent = text || "";
+    accentBadge.classList.toggle("visible", visible);
+  }
+
   if (spriteId) {
     spriteImg.onload = () => {
       spriteImg.classList.add("visible");
       spriteEmoji.classList.add("hidden");
+      if (spriteId === "tree") treeBg.classList.remove("visible");
+      setBadge(false); // real art already shows the pose/expression
     };
     spriteImg.onerror = () => {
       spriteImg.classList.remove("visible");
       spriteEmoji.classList.remove("hidden");
+      setBadge(true);
     };
     spriteImg.src = `../../../assets/sprites/${spriteId}.png`;
   } else {
     spriteImg.classList.remove("visible");
     spriteEmoji.classList.remove("hidden");
+    setBadge(true);
   }
   spriteEmoji.textContent = sprite;
-
-  zzz.classList.toggle("visible", !!showZzz);
-  treeBg.classList.toggle("visible", !!showTree);
 }
 
 function applyBaseline() {
@@ -83,6 +100,7 @@ function applyForcedEmotion(id, { line, durationMs = 4000 } = {}) {
     zzz: false,
     showTree: baseline.showTree,
     spriteId: id,
+    accent: emotion.accent,
   });
   showSpeech(line, durationMs);
   clearTimeout(revertTimer);

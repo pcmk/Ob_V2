@@ -91,7 +91,7 @@ body {
   animation: sway 4s ease-in-out infinite;
 }
 
-#zzz {
+#accent-badge {
   position: absolute;
   top: -6px;
   right: 10px;
@@ -100,11 +100,11 @@ body {
   pointer-events: none;
 }
 
-#zzz.visible {
-  animation: zzzFloat 2.4s ease-in-out infinite;
+#accent-badge.visible {
+  animation: badgeFloat 2.4s ease-in-out infinite;
 }
 
-@keyframes zzzFloat {
+@keyframes badgeFloat {
   0% { opacity: 0; transform: translateY(6px) scale(0.8); }
   30% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-24px) scale(1.1); }
