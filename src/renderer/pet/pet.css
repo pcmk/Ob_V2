@@ -1,0 +1,189 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", -apple-system, sans-serif;
+}
+
+#stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Dragging the window: click-and-drag anywhere on the panda's window
+     moves it, like classic desktop companions. */
+  -webkit-app-region: drag;
+}
+
+#sprite-wrap {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#sprite-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+  pointer-events: none;
+}
+
+#sprite-img.visible {
+  display: block;
+}
+
+#sprite-emoji {
+  font-size: 120px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25));
+  transform-origin: center bottom;
+}
+
+#sprite-emoji.hidden {
+  display: none;
+}
+
+#note-btn {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  font-size: 15px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+#stage:hover #note-btn {
+  opacity: 1;
+}
+
+#note-btn:hover {
+  background: #fff;
+}
+
+#speech-bubble {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  bottom: 175px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.85);
+  max-width: 220px;
+  background: #fff;
+  color: #333;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#speech-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 8px 8px 0 8px;
+  border-style: solid;
+  border-color: #fff transparent transparent transparent;
+}
+
+#speech-bubble.visible {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* --- Emotion animations, applied to #sprite-wrap --- */
+
+@keyframes breathe {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.05); }
+}
+.anim-breathe { animation: breathe 2.2s ease-in-out infinite; }
+
+@keyframes breatheSlow {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.03); }
+}
+.anim-breathe-slow { animation: breatheSlow 3.6s ease-in-out infinite; }
+
+@keyframes bounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-14px); }
+}
+.anim-bounce { animation: bounce 0.6s ease-in-out infinite; }
+
+@keyframes jump {
+  0%, 100% { transform: translateX(-50%) translateY(0) scale(1); }
+  30% { transform: translateX(-50%) translateY(-30px) scale(1.05); }
+  50% { transform: translateX(-50%) translateY(0) scale(0.95); }
+  70% { transform: translateX(-50%) translateY(-10px) scale(1.02); }
+}
+.anim-jump { animation: jump 0.7s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.1); }
+}
+.anim-pulse { animation: pulse 0.9s ease-in-out infinite; }
+
+@keyframes wiggle {
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  25% { transform: translateX(-50%) rotate(-8deg); }
+  75% { transform: translateX(-50%) rotate(8deg); }
+}
+.anim-wiggle { animation: wiggle 0.4s ease-in-out infinite; }
+
+@keyframes dance {
+  0%, 100% { transform: translateX(-50%) rotate(0deg) translateY(0); }
+  25% { transform: translateX(-60%) rotate(-10deg) translateY(-6px); }
+  50% { transform: translateX(-50%) rotate(0deg) translateY(0); }
+  75% { transform: translateX(-40%) rotate(10deg) translateY(-6px); }
+}
+.anim-dance { animation: dance 0.8s ease-in-out infinite; }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(-50%); }
+  25% { transform: translateX(-58%); }
+  75% { transform: translateX(-42%); }
+}
+.anim-shake { animation: shake 0.15s ease-in-out infinite; }
+
+@keyframes sway {
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  50% { transform: translateX(-50%) rotate(-4deg); }
+}
+.anim-sway { animation: sway 2.6s ease-in-out infinite; }
+
+@keyframes tilt {
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  50% { transform: translateX(-50%) rotate(10deg); }
+}
+.anim-tilt { animation: tilt 1.6s ease-in-out infinite; }

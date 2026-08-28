@@ -1,0 +1,33 @@
+{
+  "name": "desktop-panda-pet",
+  "version": "0.1.0",
+  "description": "A real desktop panda companion that lives on top of your screen.",
+  "main": "src/main/main.js",
+  "author": "",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.pandapet.desktop",
+    "productName": "Desktop Panda Pet",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}

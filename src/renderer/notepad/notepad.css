@@ -1,0 +1,62 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", -apple-system, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  background: #fff6d8;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #ffe08a;
+  font-weight: 600;
+  font-size: 13px;
+  -webkit-app-region: drag;
+}
+
+#close-btn {
+  -webkit-app-region: no-drag;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #5a4a1a;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+#close-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+#note-area {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #3a2f10;
+}
+
+#status {
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  color: #8a7a44;
+  text-align: right;
+}
