@@ -7,6 +7,10 @@ const WINDOW_SIZE = { width: 260, height: 260 };
 
 let petWindow = null;
 let saveTimer = null;
+let programmaticMoveTimer = null;
+let isProgrammaticMove = false;
+let userDragging = false;
+let dragEndTimer = null;
 
 function defaultPosition() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -53,7 +57,22 @@ function createPetWindow() {
 
   petWindow.loadFile(path.join(__dirname, "..", "..", "renderer", "pet", "index.html"));
 
+  // Distinguish the user physically dragging the panda from the activity
+  // engine repositioning it 20x/sec while it walks/climbs: every call to
+  // movePetWindow() flags isProgrammaticMove briefly, so these handlers
+  // only react to *real* drags - otherwise autonomous walking would look
+  // like constant dragging and spam-save the window position to disk.
+  petWindow.on("move", () => {
+    if (isProgrammaticMove) return;
+    userDragging = true;
+    clearTimeout(dragEndTimer);
+    dragEndTimer = setTimeout(() => {
+      userDragging = false;
+    }, 250);
+  });
+
   petWindow.on("moved", () => {
+    if (isProgrammaticMove) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       const [x, y] = petWindow.getPosition();
@@ -82,7 +101,32 @@ function sendToPet(channel, payload) {
 function resetPosition() {
   if (!petWindow) return;
   const { x, y } = defaultPosition();
-  petWindow.setPosition(x, y);
+  movePetWindow(x, y);
 }
 
-module.exports = { createPetWindow, getPetWindow, sendToPet, resetPosition, WINDOW_SIZE };
+// The only way the activity engine (or anything else in main) should move
+// the window - flags the move as programmatic so it isn't mistaken for a
+// user drag (see the "move"/"moved" handlers above).
+function movePetWindow(x, y) {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  isProgrammaticMove = true;
+  petWindow.setPosition(Math.round(x), Math.round(y));
+  clearTimeout(programmaticMoveTimer);
+  programmaticMoveTimer = setTimeout(() => {
+    isProgrammaticMove = false;
+  }, 30);
+}
+
+function isUserDragging() {
+  return userDragging;
+}
+
+module.exports = {
+  createPetWindow,
+  getPetWindow,
+  sendToPet,
+  resetPosition,
+  movePetWindow,
+  isUserDragging,
+  WINDOW_SIZE,
+};

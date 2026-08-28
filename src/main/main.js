@@ -43,11 +43,9 @@ if (!gotLock) {
       reminderSettings: reminderService.loadReminderSettings(),
     });
 
-    // Water reminder loop: whenever it fires, make the panda visibly thirsty.
-    reminderService.start(() => setEmotion("thirsty", { durationMs: 8000 }));
-
-    // Greet on launch.
-    setEmotion("waving", { durationMs: 3000 });
+    // Activity engine (autonomous walking/playing/sleeping/tree-climbing)
+    // and the water reminder loop are started once the pet window's
+    // renderer signals it's ready - see ipcHandlers.js "pet:renderer-ready".
   });
 
   app.on("window-all-closed", () => {

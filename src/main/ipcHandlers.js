@@ -4,9 +4,12 @@
 const { ipcMain, Menu } = require("electron");
 const store = require("./services/storeService");
 const reminderService = require("./services/reminderService");
+const activityService = require("./services/activityService");
 const { pickLine } = require("../shared/emotions");
 const { sendToPet, getPetWindow, resetPosition } = require("./windows/petWindow");
 const { toggleNotepadWindow, getNotepadWindow } = require("./windows/notepadWindow");
+
+let startedServices = false;
 
 function setEmotion(id, { line, durationMs } = {}) {
   sendToPet("pet:set-emotion", {
@@ -17,6 +20,19 @@ function setEmotion(id, { line, durationMs } = {}) {
 }
 
 function registerIpcHandlers() {
+  // The pet window's renderer tells us once it has finished loading and
+  // attached its IPC listeners. We only start pushing activity/emotion
+  // updates after that - otherwise the very first messages (the launch
+  // greeting, the initial activity) can be sent before anything is
+  // listening and silently vanish.
+  ipcMain.on("pet:renderer-ready", () => {
+    if (startedServices) return;
+    startedServices = true;
+    activityService.start((payload) => sendToPet("pet:activity", payload));
+    reminderService.start(() => setEmotion("thirsty", { durationMs: 8000 }));
+    setEmotion("waving", { durationMs: 3000 });
+  });
+
   // Panda reacts when clicked.
   ipcMain.on("pet:clicked", () => {
     setEmotion("happy", { durationMs: 2000 });
