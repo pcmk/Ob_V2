@@ -32,6 +32,10 @@ function createPetWindow() {
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
+    // The panda's window is never meant to be closed on its own (only
+    // hidden via the tray, or the whole app quit) - otherwise the tray
+    // menu is left holding a reference to a destroyed window.
+    closable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     focusable: true,

@@ -22,14 +22,20 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     registerIpcHandlers();
-    const petWindow = createPetWindow();
+    createPetWindow();
 
     createTray({
       onToggleShow: () => {
-        if (petWindow.isVisible()) petWindow.hide();
-        else petWindow.show();
+        const win = getPetWindow();
+        if (!win || win.isDestroyed()) return;
+        if (win.isVisible()) win.hide();
+        else win.show();
       },
-      onOpenNotepad: () => toggleNotepadWindow(petWindow.getBounds()),
+      onOpenNotepad: () => {
+        const win = getPetWindow();
+        if (!win || win.isDestroyed()) return;
+        toggleNotepadWindow(win.getBounds());
+      },
       onResetPosition: resetPosition,
       onSetEmotion: (id) => setEmotion(id),
       onToggleWater: (enabled) => reminderService.setEnabled(enabled),
