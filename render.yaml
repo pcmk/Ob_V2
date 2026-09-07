@@ -1,0 +1,25 @@
+# Render blueprint. In Render: New → Blueprint → pick this repo and branch.
+# Everything below is applied automatically; you only type the two secrets.
+services:
+  - type: web
+    name: code-snippet-tool
+    runtime: node
+    plan: free
+    rootDir: tools/code-snippet-app
+    buildCommand: echo "no dependencies to install"
+    startCommand: node server.js
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Prompted at deploy time (sync: false = Render asks you, never stored in git)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-opus-5
+      - key: CLAUDE_EFFORT
+        value: high
+      - key: MAX_IMAGES
+        value: "6"
