@@ -1,0 +1,13 @@
+{
+  "name": "shopdeck-code-snippet-tool",
+  "version": "1.0.0",
+  "description": "Brief + screenshot/recording + reference links + widget name in; paste-ready Shopdeck code_snippet_widget section out.",
+  "type": "module",
+  "private": true,
+  "main": "server.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/run.js"
+  }
+}

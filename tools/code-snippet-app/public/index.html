@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Snippet Tool</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%A7%B5%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --paper:#F3F4F7; --surface:#FFFFFF; --surface-2:#E9ECF2; --surface-3:#DFE3EC;
+    --ink:#111623; --ink-soft:#39404F; --muted:#666E80; --line:#D5DAE4;
+    --indigo:#2F3C93; --indigo-ink:#FFFFFF; --indigo-wash:#E8EAF7;
+    --marigold:#C9860B; --marigold-wash:#FBF1DC;
+    --ok:#1B6F52; --crit:#A32C24;
+    --code-bg:#12161F; --code-ink:#D9DEEA;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+    --r:4px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#0D1016; --surface:#151A23; --surface-2:#1D242F; --surface-3:#252E3B;
+      --ink:#E6E9F1; --ink-soft:#C3C9D6; --muted:#8C95A6; --line:#28303C;
+      --indigo:#94A0F5; --indigo-ink:#0D1016; --indigo-wash:#1B2140;
+      --marigold:#E0AB3E; --marigold-wash:#2A2213;
+      --ok:#4FBF95; --crit:#E8776C;
+      --code-bg:#0A0D13; --code-ink:#D3D9E6;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--indigo)}
+  button,input,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
+  [hidden]{display:none!important}
+  .wrap{max-width:820px;margin:0 auto;padding:0 20px 72px}
+  .masthead{padding:26px 0 18px;border-bottom:1px solid var(--line);margin-bottom:22px}
+  .kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(30px,5vw,42px);line-height:1;margin:6px 0 8px;letter-spacing:-.01em}
+  .tagline{color:var(--ink-soft);margin:0;max-width:60ch}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:18px}
+  .card__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
+  .card__head h2{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin:0;font-weight:500}
+  .card__body{padding:16px}
+  .step{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:14px 0;border-bottom:1px dashed var(--line)}
+  .step:first-child{padding-top:0}
+  .step:last-child{border-bottom:0;padding-bottom:0}
+  .num{width:26px;height:26px;border-radius:50%;background:var(--indigo);color:var(--indigo-ink);font-family:var(--mono);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .step label.title{display:block;font-weight:600;margin-bottom:4px}
+  .step label.title small{font-weight:400;color:var(--muted);margin-left:6px}
+  .hint{display:block;color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.45}
+  input[type=text],input[type=password],textarea{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;color:var(--ink)}
+  textarea{min-height:120px;resize:vertical;font-family:var(--mono);font-size:13px;line-height:1.5}
+  textarea.short{min-height:64px}
+  input:focus,textarea:focus{border-color:var(--indigo);outline:none;box-shadow:0 0 0 3px var(--indigo-wash)}
+  .drop{border:1.5px dashed var(--line);border-radius:var(--r);padding:18px 14px;text-align:center;background:var(--surface-2);transition:background .15s ease,border-color .15s ease}
+  .drop[data-drag="1"]{background:var(--indigo-wash);border-color:var(--indigo)}
+  .drop p{margin:0 0 10px;color:var(--ink-soft)}
+  .drop .row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+  .drop .or{color:var(--muted);font-size:12.5px}
+  .filmstrip{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:center}
+  .frame{position:relative;width:96px;height:64px;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--surface-3)}
+  .frame img{width:100%;height:100%;object-fit:cover;display:block}
+  .frame button{position:absolute;top:2px;right:2px;width:18px;height:18px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:12px;line-height:18px;padding:0;cursor:pointer}
+  .refstatus{font-size:12.5px;color:var(--muted);margin:8px 0 0;min-height:1em}
+  .refstatus[data-err="1"]{color:var(--crit)}
+  .sub{margin-top:12px}
+  .sub label{display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;color:var(--ink-soft)}
+  .btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:8px 14px;cursor:pointer;font-weight:500;line-height:1.2}
+  .btn:hover{background:var(--surface-2)}
+  .btn--primary{background:var(--indigo);border-color:var(--indigo);color:var(--indigo-ink);padding:12px 22px;font-size:15px;width:100%}
+  .btn--primary:hover{filter:brightness(1.08);background:var(--indigo)}
+  .btn--primary:disabled{opacity:.55;cursor:default;filter:none}
+  .btn--rec{background:var(--crit);border-color:var(--crit);color:#fff}
+  .btn--small{padding:6px 11px;font-size:13px}
+  .btn[disabled]{opacity:.55;cursor:default}
+  label.btn{display:inline-block}
+  .go{padding:16px}
+  .status{margin:10px 0 0;font-size:13px;color:var(--muted);min-height:1.2em;text-align:center}
+  .status[data-kind="err"]{color:var(--crit)}
+  .status[data-kind="ok"]{color:var(--ok)}
+  .status[data-kind="wait"]{color:var(--indigo)}
+  .reflog{list-style:none;margin:8px 0 0;padding:0;font-size:12.5px;color:var(--muted);text-align:left}
+  .reflog li{padding:2px 0}
+  .reflog .ok{color:var(--ok)} .reflog .bad{color:var(--crit)}
+  .tabs{display:flex}
+  .tab{border:0;background:transparent;padding:8px 12px;font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--indigo)}
+  .headtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  iframe{width:100%;height:520px;border:0;background:#fff;display:block}
+  pre{margin:0;background:var(--code-bg);color:var(--code-ink);font-family:var(--mono);font-size:12px;line-height:1.55;padding:14px 16px;overflow:auto;max-height:520px;white-space:pre;tab-size:2}
+  .meta{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:2px;border:1px solid}
+  .chip--ok{color:var(--ok);border-color:var(--ok)}
+  .chip--no{color:var(--crit);border-color:var(--crit)}
+  details{border-top:1px solid var(--line)}
+  summary{cursor:pointer;padding:10px 16px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);list-style:none;display:flex;justify-content:space-between;align-items:center}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";font-size:14px;color:var(--muted)}
+  details[open] summary::after{content:"–"}
+  .dbody{padding:0 16px 14px;color:var(--ink-soft)}
+  .checks{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+  .checks li{display:flex;gap:10px;align-items:baseline;font-size:13px}
+  .checks li small{display:block;color:var(--muted);font-size:12px}
+  .steps{margin:0;padding-left:18px;display:grid;gap:5px}
+  .steps code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:2px}
+  .refine{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+  .refine input{flex:1}
+  .empty{padding:40px 16px;text-align:center;color:var(--muted)}
+  .banner{background:var(--marigold-wash);border:1px solid var(--marigold);border-radius:var(--r);padding:10px 14px;margin-bottom:18px;color:var(--ink-soft)}
+  .foot{margin-top:24px;font-size:12px;color:var(--muted)}
+  .gate{max-width:420px;margin:60px auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+  .gate h2{margin:0 0 8px;font-family:var(--serif);font-weight:400;font-size:24px}
+  .gate p{color:var(--ink-soft);margin:0 0 14px}
+  .gate .row{display:flex;gap:8px}
+  .gate .row input{flex:1}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate" hidden>
+  <h2>Code Snippet Tool</h2>
+  <p>This tool runs on a shared Claude account. Enter the team password to continue.</p>
+  <div class="row"><input type="password" id="f-pass" placeholder="Password" autocomplete="current-password"><button class="btn" type="button" id="btn-pass">Enter</button></div>
+  <p class="status" id="gate-status" style="text-align:left"></p>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header class="masthead">
+    <span class="kicker">Shopdeck · code_snippet_widget</span>
+    <h1>Code Snippet Tool</h1>
+    <p class="tagline">Three inputs. One button. Paste-ready HTML + CSS + JS for a homepage section. The POC pastes and publishes; this page only writes code.</p>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="card" aria-labelledby="h-in">
+    <div class="card__head"><h2 id="h-in">Input</h2></div>
+    <div class="card__body">
+
+      <div class="step">
+        <div class="num">a</div>
+        <div>
+          <label class="title" for="f-brief">Brief</label>
+          <textarea id="f-brief" placeholder="What should this section do? e.g. A quiet editorial band, second on the homepage, telling first-time visitors why handloom costs more than powerloom. One big line, a short paragraph, a link to the collection."></textarea>
+          <span class="hint">Say what it must achieve, not just what it contains. Colours, copy or images you leave out become clear placeholders like <code>[SELLER NAME]</code>.</span>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">b</div>
+        <div>
+          <label class="title">Screenshot, screen recording, or reference links <small>optional</small></label>
+          <div class="drop" id="drop">
+            <p>Paste a screenshot with <b>Ctrl/⌘+V</b>, drop a file here, or:</p>
+            <div class="row">
+              <label class="btn" for="f-media">Upload image or video</label>
+              <input type="file" id="f-media" accept="video/*,image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+              <span class="or">or</span>
+              <button class="btn" type="button" id="btn-rec" hidden>Record my screen</button>
+              <button class="btn btn--rec" type="button" id="btn-rec-stop" hidden>Stop · <span id="rec-timer">0:00</span></button>
+            </div>
+            <div class="filmstrip" id="filmstrip" hidden></div>
+            <div id="ref-note-wrap" hidden style="margin-top:10px;text-align:left">
+              <input type="text" id="f-refnote" placeholder="What does it show? e.g. hero band from our Figma — big serif headline left, product photo right">
+            </div>
+            <p class="refstatus" id="ref-status"></p>
+          </div>
+          <div class="sub">
+            <label for="f-urls">Reference links <span style="font-weight:400;color:var(--muted)">(one per line, up to <span id="max-urls">5</span>)</span></label>
+            <textarea id="f-urls" class="short" placeholder="https://example-store.com/&#10;https://another-brand.com/collections/summer"></textarea>
+          </div>
+          <span class="hint">Claude sees the images directly, and reads each link's title, headings, text, colours and fonts. All of it is visual reference only: it never copies another site's markup, brand or assets.</span>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">c</div>
+        <div>
+          <label class="title" for="f-widget">Widget name</label>
+          <input type="text" id="f-widget" placeholder="e.g. THE FABRIC STORY" autocomplete="off">
+          <span class="hint">The row name on Website → Home. ALL-CAPS matches the storefront section title. The CSS prefix is derived from it automatically.</span>
+        </div>
+      </div>
+
+    </div>
+    <div class="go">
+      <button class="btn btn--primary" type="button" id="btn-gen">Generate section</button>
+      <button class="btn" type="button" id="btn-stop" hidden style="width:100%;margin-top:8px">Stop</button>
+      <p class="status" id="status"></p>
+      <ul class="reflog" id="reflog"></ul>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-out">
+    <div class="card__head">
+      <h2 id="h-out">Output</h2>
+      <div class="headtools" id="headtools" hidden>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" id="tab-preview" aria-selected="true" type="button">Preview</button>
+          <button class="tab" role="tab" id="tab-code" aria-selected="false" type="button">Code</button>
+        </div>
+        <button class="btn btn--small" type="button" id="btn-copy">Copy code</button>
+        <button class="btn btn--small" type="button" id="btn-save">Save .html</button>
+      </div>
+    </div>
+
+    <div class="empty" id="empty">Your section appears here — a live preview and the code to paste.</div>
+
+    <div id="out" hidden>
+      <iframe id="frame" title="Preview of the generated section" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+      <pre id="pre" hidden></pre>
+      <div class="meta">
+        <span><span class="chip" id="score-chip">–</span> <span id="score-text"></span></span>
+        <span id="size"></span>
+      </div>
+      <details id="d-checks">
+        <summary>Checks</summary>
+        <div class="dbody">
+          <ul class="checks" id="audit"></ul>
+          <p style="margin:10px 0 0"><button class="btn btn--small" type="button" id="btn-fix" hidden>Ask Claude to fix the failures</button></p>
+        </div>
+      </details>
+      <details>
+        <summary>How it looks</summary>
+        <div class="dbody" id="preview-note"></div>
+      </details>
+      <details>
+        <summary>Where the POC pastes this</summary>
+        <div class="dbody">
+          <ol class="steps">
+            <li>Signed-in Chrome at <code>pro.shopdeck.com</code> → <b>Sellers → Sellers List</b></li>
+            <li>Filter by <b>Seller Id</b>, find the row → <b>Log in as Seller</b></li>
+            <li><b>Website → Website Pages → Home</b></li>
+            <li>Find the <code>code_snippet_widget</code> row named <b id="note-name">…</b>, or <b>+ Add Widget</b> → that type</li>
+            <li><b>Edit &gt;</b> → paste the whole code into the code field → save</li>
+            <li><b>Preview</b>, then <b>Publish</b>. Propagation can take up to ~2 hours.</li>
+          </ol>
+          <p style="margin:10px 0 0;font-size:12.5px">Prefixing reduces collisions with the theme; it does not prove there are none. Preview is the real check.</p>
+        </div>
+      </details>
+      <div class="refine">
+        <input type="text" id="f-refine" placeholder="Change something… e.g. make the heading bigger, use a dark background">
+        <button class="btn" type="button" id="btn-refine">Update</button>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">Model: <span id="model-name">…</span>. Nothing here logs in as a seller or clicks Publish.</p>
+</div>
+
+<video id="ref-video" muted playsinline hidden></video>
+<canvas id="ref-canvas" hidden></canvas>
+
+<script>
+(function(){
+  "use strict";
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  var fBrief = $("f-brief"), fWidget = $("f-widget"), fMedia = $("f-media"), fRefine = $("f-refine"), fUrls = $("f-urls"), fRefNote = $("f-refnote");
+  var btnGen = $("btn-gen"), btnStop = $("btn-stop"), btnCopy = $("btn-copy"), btnSave = $("btn-save"),
+      btnFix = $("btn-fix"), btnRefine = $("btn-refine"), btnRec = $("btn-rec"), btnRecStop = $("btn-rec-stop");
+  var elStatus = $("status"), elBanner = $("banner"), elEmpty = $("empty"), elOut = $("out"), elHeadtools = $("headtools"),
+      elFrame = $("frame"), elPre = $("pre"), elAudit = $("audit"), elScoreChip = $("score-chip"), elScoreText = $("score-text"),
+      elSize = $("size"), elNote = $("preview-note"), elNoteName = $("note-name"), elRefLog = $("reflog"),
+      elDrop = $("drop"), elFilmstrip = $("filmstrip"), elRefStatus = $("ref-status"), elRefNoteWrap = $("ref-note-wrap"),
+      elVideo = $("ref-video"), elCanvas = $("ref-canvas"), recTimerEl = $("rec-timer"),
+      tabPreview = $("tab-preview"), tabCode = $("tab-code"), elGate = $("gate"), elApp = $("app");
+
+  var config = { needsPassword: false, maxImages: 6, maxUrls: 5, model: "" };
+  var password = "";
+  try { password = localStorage.getItem("sd_snippet_pw") || ""; } catch (e) {}
+  var ctl = null, current = "", failedChecks = [];
+  var refFrames = [];  /* {blob,url} */
+  var recorder = null, recChunks = [], recTimerId = null, recStart = 0;
+  var FRAMES_FROM_VIDEO = 4;
+
+  /* ---------- derived ---------- */
+  function widgetName(){ return String(fWidget.value || "").trim(); }
+  function prefix(){
+    var words = widgetName().toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+    var p = "";
+    if (words.length >= 2) p = words.map(function(w){ return w[0]; }).join("").slice(0, 4);
+    else if (words.length === 1) p = words[0].slice(0, 3);
+    if (!/^[a-z]/.test(p)) p = "sd" + p;
+    return (p || "sd") + "-";
+  }
+  function urls(){ return String(fUrls.value || "").split(/\n+/).map(function(s){ return s.trim(); }).filter(Boolean).slice(0, config.maxUrls); }
+
+  /* ---------- output ---------- */
+  function stripFences(txt){
+    var t = String(txt == null ? "" : txt).trim();
+    return t.replace(/^```[a-zA-Z]*[ \t]*\r?\n?/, "").replace(/\r?\n?```[ \t]*$/, "").trim();
+  }
+  var PLACEHOLDER = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#d8d4cc"/>' +
+    '<path d="M0 0 L400 500 M400 0 L0 500" stroke="#c2bdb2" stroke-width="1"/>' +
+    '<text x="200" y="244" font-family="monospace" font-size="15" fill="#6d675c" text-anchor="middle">SELLER IMAGE</text>' +
+    '<text x="200" y="266" font-family="monospace" font-size="11" fill="#8c8579" text-anchor="middle">renders on the storefront</text></svg>');
+  function renderPreview(blob){
+    elFrame.srcdoc =
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<style>html,body{margin:0;padding:0}body{background:#fff;min-height:100%;overflow-x:hidden}.sdf-pad{height:1px}</style>' +
+      '<div class="sdf-pad"></div>' + blob + '<div class="sdf-pad"></div>' +
+      "\x3Cscript>(function(){var ph=" + JSON.stringify(PLACEHOLDER) + ";" +
+      "var imgs=document.images;for(var i=0;i<imgs.length;i++){(function(im){" +
+      "im.addEventListener('error',function(){im.src=ph;},{once:true});" +
+      "if(im.complete&&im.naturalWidth===0)im.src=ph;})(imgs[i]);}})();\x3C/script>";
+  }
+  function prefixReport(blob, p){
+    var re = /class\s*=\s*"([^"]*)"/g, m, bad = [], any = false;
+    while ((m = re.exec(blob)) !== null) {
+      any = true;
+      m[1].split(/\s+/).forEach(function(c){ if (c && c.indexOf(p) !== 0 && bad.indexOf(c) < 0) bad.push(c); });
+    }
+    return { ok: any && !bad.length, bad: bad.slice(0, 4) };
+  }
+  function runAudit(blob){
+    var p = prefix(), pr = prefixReport(blob, p);
+    var iStyle = blob.indexOf("\x3Cstyle"), iScript = blob.search(/\x3Cscript[\s>]/);
+    var checks = [
+      ["Order is markup → style → script", iStyle > 0 && iScript > iStyle, "The field renders top to bottom."],
+      ["Every class prefixed " + p, pr.ok, pr.ok ? "Theme selectors can't reach it." : "Unprefixed: " + pr.bad.join(", ")],
+      ["No external script or stylesheet", !/\x3Cscript[^>]+src=/i.test(blob) && !/\x3Clink[^>]+stylesheet/i.test(blob) && !/@import/i.test(blob) && !/fonts\.googleapis/i.test(blob), "No CDN dependencies."],
+      ["Full-bleed breakout present", blob.indexOf("100vw") > -1 && /50%\s*-\s*50vw/.test(blob), "Escapes the theme's max-width container."],
+      ["Adapts across mobile and desktop", /@media[^{]*\(min-width:/.test(blob) || /clamp\(/.test(blob), "One paste serves both widths."],
+      ["Honours prefers-reduced-motion", /prefers-reduced-motion/.test(blob), "Motion off, content readable."],
+      ["Nothing parked at opacity:0", !/opacity:\s*0\s*[;}]/.test(blob), "A script failure must not leave a blank band."],
+      ["Guarded IIFE, own root only", /if\s*\(\s*!\s*root\s*\)\s*return/.test(blob) && /data-[a-z0-9_-]+/i.test(blob), "Safe to paste twice."]
+    ];
+    var pass = 0; failedChecks = [];
+    elAudit.innerHTML = checks.map(function(c){
+      if (c[1]) pass++; else failedChecks.push(c[0] + " — " + c[2]);
+      return '<li><span class="chip ' + (c[1] ? "chip--ok" : "chip--no") + '">' + (c[1] ? "pass" : "fail") + '</span><span>' + esc(c[0]) + '<small>' + esc(c[2]) + '</small></span></li>';
+    }).join("");
+    var all = pass === checks.length;
+    elScoreChip.className = "chip " + (all ? "chip--ok" : "chip--no");
+    elScoreChip.textContent = pass + " / " + checks.length;
+    elScoreText.textContent = all ? "checks pass" : "checks — open Checks to see what failed";
+    btnFix.hidden = !failedChecks.length;
+  }
+  function showOut(){ elEmpty.hidden = true; elOut.hidden = false; elHeadtools.hidden = false; }
+  function show(blob){
+    current = blob;
+    showOut();
+    elPre.textContent = blob;
+    elSize.textContent = blob.split("\n").length + " lines · " + (blob.length / 1024).toFixed(1) + " KB";
+    renderPreview(blob);
+    runAudit(blob);
+    var m = blob.match(/\x3C!--\s*PREVIEW:\s*([\s\S]*?)--\x3E/i);
+    elNote.textContent = m ? m[1].trim() : "Check the preview tab — Claude did not include a preview line.";
+    elNoteName.textContent = widgetName() || "NEW SECTION";
+    selectTab("preview");
+  }
+  function selectTab(which){
+    var pv = which === "preview";
+    tabPreview.setAttribute("aria-selected", String(pv));
+    tabCode.setAttribute("aria-selected", String(!pv));
+    elFrame.hidden = !pv; elPre.hidden = pv;
+  }
+  tabPreview.addEventListener("click", function(){ selectTab("preview"); });
+  tabCode.addEventListener("click", function(){ selectTab("code"); });
+
+  /* ---------- status ---------- */
+  function setStatus(kind, msg){ elStatus.setAttribute("data-kind", kind || ""); elStatus.textContent = msg || ""; }
+  function banner(msg){ elBanner.hidden = !msg; elBanner.textContent = msg || ""; }
+  function setBusy(on){ btnGen.disabled = on; btnRefine.disabled = on; btnFix.disabled = on; btnStop.hidden = !on; }
+
+  /* ---------- reference frames ---------- */
+  function setRefStatus(msg, isErr){ elRefStatus.textContent = msg || ""; elRefStatus.setAttribute("data-err", isErr ? "1" : "0"); }
+  function renderFilmstrip(){
+    elFilmstrip.hidden = !refFrames.length;
+    elRefNoteWrap.hidden = !refFrames.length;
+    elFilmstrip.innerHTML = refFrames.map(function(f, i){
+      return '<span class="frame"><img src="' + f.url + '" alt="Reference ' + (i + 1) + '"><button type="button" data-i="' + i + '" aria-label="Remove">&times;</button></span>';
+    }).join("");
+    setRefStatus(refFrames.length ? refFrames.length + " of " + config.maxImages + " images attached — sent with the brief on Generate." : "");
+  }
+  elFilmstrip.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-i]"); if (!b) return;
+    var i = Number(b.getAttribute("data-i"));
+    URL.revokeObjectURL(refFrames[i].url); refFrames.splice(i, 1); renderFilmstrip();
+  });
+  function pushCanvas(quality, cb){
+    elCanvas.toBlob(function(blob){
+      if (blob) { refFrames.push({ blob: blob, url: URL.createObjectURL(blob) }); renderFilmstrip(); }
+      cb && cb(!!blob);
+    }, "image/jpeg", quality);
+  }
+  function addImage(file){
+    if (refFrames.length >= config.maxImages) { setRefStatus("Already at " + config.maxImages + " images — remove one first.", true); return; }
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      var scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      elCanvas.width = Math.round(img.naturalWidth * scale); elCanvas.height = Math.round(img.naturalHeight * scale);
+      elCanvas.getContext("2d").drawImage(img, 0, 0, elCanvas.width, elCanvas.height);
+      pushCanvas(0.9, function(){ URL.revokeObjectURL(url); });
+    };
+    img.onerror = function(){ setRefStatus("Couldn't read that image (" + (file.type || "unknown type") + ").", true); URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+  function seekTo(t){
+    return new Promise(function(resolve){
+      var done = function(){ elVideo.removeEventListener("seeked", done); resolve(); };
+      elVideo.addEventListener("seeked", done); elVideo.currentTime = t;
+    });
+  }
+  function fixDuration(cb){
+    if (isFinite(elVideo.duration)) { cb(); return; }
+    var fix = function(){ if (!isFinite(elVideo.duration)) return; elVideo.removeEventListener("durationchange", fix); elVideo.currentTime = 0; cb(); };
+    elVideo.addEventListener("durationchange", fix); elVideo.currentTime = 1e101;
+  }
+  function addVideo(file){
+    var url = URL.createObjectURL(file);
+    setRefStatus("Reading video…");
+    elVideo.onerror = function(){ setRefStatus("Couldn't read that video.", true); };
+    elVideo.onloadedmetadata = function(){
+      fixDuration(function(){
+        var room = config.maxImages - refFrames.length;
+        var n = Math.min(FRAMES_FROM_VIDEO, room), d = elVideo.duration;
+        if (n < 1) { setRefStatus("Already at " + config.maxImages + " images — remove some first.", true); return; }
+        var i = 0;
+        (function next(){
+          if (i >= n) { setRefStatus(refFrames.length + " of " + config.maxImages + " images attached (" + n + " frames from the video)."); URL.revokeObjectURL(url); return; }
+          seekTo(d * (i + 1) / (n + 1)).then(function(){
+            var w = elVideo.videoWidth, h = elVideo.videoHeight, s = Math.min(1, 1280 / w);
+            elCanvas.width = Math.round(w * s); elCanvas.height = Math.round(h * s);
+            elCanvas.getContext("2d").drawImage(elVideo, 0, 0, elCanvas.width, elCanvas.height);
+            pushCanvas(0.82, function(){ i++; next(); });
+          });
+        })();
+      });
+    };
+    elVideo.src = url;
+  }
+  function takeFiles(list){
+    var files = Array.prototype.slice.call(list || []).filter(function(f){ return f && (/^image\//.test(f.type) || /^video\//.test(f.type)); });
+    if (!files.length) return false;
+    var videoTaken = false;
+    files.forEach(function(f){
+      if (/^video\//.test(f.type)) { if (videoTaken) return; videoTaken = true; addVideo(f); }
+      else addImage(f);
+    });
+    return true;
+  }
+  fMedia.addEventListener("change", function(){ takeFiles(fMedia.files); fMedia.value = ""; });
+  document.addEventListener("paste", function(e){
+    var cd = e.clipboardData; if (!cd) return;
+    var files = [];
+    if (cd.files && cd.files.length) files = Array.prototype.slice.call(cd.files);
+    else if (cd.items) for (var i = 0; i < cd.items.length; i++) if (cd.items[i].kind === "file") { var f = cd.items[i].getAsFile(); if (f) files.push(f); }
+    if (files.length && takeFiles(files)) e.preventDefault();
+  });
+  elDrop.addEventListener("dragover", function(e){ e.preventDefault(); elDrop.setAttribute("data-drag", "1"); });
+  elDrop.addEventListener("dragleave", function(){ elDrop.removeAttribute("data-drag"); });
+  elDrop.addEventListener("drop", function(e){
+    e.preventDefault(); elDrop.removeAttribute("data-drag");
+    if (!takeFiles(e.dataTransfer && e.dataTransfer.files)) setRefStatus("Drop an image or video file.", true);
+  });
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) btnRec.hidden = false;
+  btnRec.addEventListener("click", function(){
+    navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then(function(stream){
+      var mimes = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+      var mime = window.MediaRecorder && mimes.filter(function(m){ return MediaRecorder.isTypeSupported(m); })[0];
+      try { recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+      catch (err) { setRefStatus("This browser can't record video.", true); stream.getTracks().forEach(function(t){ t.stop(); }); return; }
+      recChunks = [];
+      recorder.ondataavailable = function(e){ if (e.data && e.data.size) recChunks.push(e.data); };
+      recorder.onstop = function(){
+        stream.getTracks().forEach(function(t){ t.stop(); });
+        clearInterval(recTimerId); btnRec.hidden = false; btnRecStop.hidden = true;
+        addVideo(new Blob(recChunks, { type: mime || "video/webm" }));
+      };
+      stream.getVideoTracks()[0].addEventListener("ended", function(){ if (recorder.state !== "inactive") recorder.stop(); });
+      recorder.start(); recStart = Date.now();
+      btnRec.hidden = true; btnRecStop.hidden = false;
+      recTimerId = setInterval(function(){
+        var s = Math.floor((Date.now() - recStart) / 1000);
+        recTimerEl.textContent = Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+      }, 500);
+      setRefStatus("Recording — switch to the design you want to show, then Stop.");
+    }, function(err){ if (err && err.name !== "NotAllowedError") setRefStatus("Couldn't start screen recording here.", true); });
+  });
+  btnRecStop.addEventListener("click", function(){ if (recorder && recorder.state !== "inactive") recorder.stop(); });
+
+  /* ---------- generate ---------- */
+  function blobToBase64(blob){
+    return new Promise(function(resolve, reject){
+      var r = new FileReader();
+      r.onload = function(){ resolve(String(r.result).split(",")[1] || ""); };
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  }
+  function readSse(res, onEvent){
+    var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
+    function pump(){
+      return reader.read().then(function(r){
+        if (r.done) return;
+        buf += dec.decode(r.value, { stream: true });
+        var idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          var frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          var ev = "message", data = "";
+          frame.split("\n").forEach(function(line){
+            if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
+            else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
+          });
+          if (data) { try { onEvent(ev, JSON.parse(data)); } catch (e) {} }
+        }
+        return pump();
+      });
+    }
+    return pump();
+  }
+  function run(kind){
+    var ask = "";
+    if (kind === "new") {
+      if (!String(fBrief.value || "").trim()) { setStatus("err", "Write the brief first (input a)."); fBrief.focus(); return; }
+    } else {
+      ask = kind === "fix"
+        ? "The snippet you just wrote fails these automatic checks:\n- " + failedChecks.join("\n- ") + "\nFix every one of them."
+        : String(fRefine.value || "").trim();
+      if (!ask) { setStatus("err", "Say what you want changed."); return; }
+      if (!current) { setStatus("err", "Generate a section first."); return; }
+    }
+    ctl = new AbortController();
+    setBusy(true);
+    elRefLog.innerHTML = "";
+    setStatus("wait", "Preparing…");
+    var streamed = "", started = false;
+
+    Promise.all(refFrames.map(function(f){ return blobToBase64(f.blob).then(function(b64){ return { mediaType: "image/jpeg", data: b64 }; }); }))
+    .then(function(images){
+      var payload = {
+        brief: fBrief.value, widgetName: widgetName(), refNote: fRefNote.value,
+        images: images, urls: urls(),
+        previousCode: kind === "new" ? "" : current, ask: kind === "new" ? "" : ask
+      };
+      return fetch("/api/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-app-password": password },
+        body: JSON.stringify(payload),
+        signal: ctl.signal
+      });
+    })
+    .then(function(res){
+      if (!res.ok) return res.json().then(function(j){ throw new Error((j && j.error) || ("HTTP " + res.status)); }, function(){ throw new Error("HTTP " + res.status); });
+      var finished = false;
+      return readSse(res, function(ev, d){
+        if (ev === "status") setStatus("wait", d.text);
+        else if (ev === "ref") {
+          var li = document.createElement("li");
+          li.innerHTML = (d.ok ? '<span class="ok">✓</span> ' : '<span class="bad">✗</span> ') + esc(d.url) + (d.ok ? (d.title ? ' — ' + esc(d.title) : '') : ' — ' + esc(d.error || 'failed'));
+          elRefLog.appendChild(li);
+        }
+        else if (ev === "delta") {
+          if (!started) { started = true; setStatus("wait", "Writing…"); showOut(); selectTab("code"); }
+          streamed += d.text; elPre.textContent = streamed;
+        }
+        else if (ev === "done") {
+          finished = true;
+          show(stripFences(d.text));
+          if (kind === "refine") fRefine.value = "";
+          setStatus("ok", d.truncated ? "Cut short by length — ask for a smaller section." : "Done. Check the preview, then copy the code.");
+        }
+        else if (ev === "error") { finished = true; throw new Error(d.error || "generation failed"); }
+      }).then(function(){ if (!finished) throw new Error("The connection closed before Claude finished. Try again."); });
+    })
+    .catch(function(e){
+      if (e && e.name === "AbortError") { setStatus("", ""); if (current) elPre.textContent = current; return; }
+      if (streamed && !current) { showOut(); elPre.textContent = streamed; }
+      else if (current) elPre.textContent = current;
+      if (/password/i.test(String(e && e.message))) { try { localStorage.removeItem("sd_snippet_pw"); } catch (x) {} password = ""; showGate("Password rejected — enter it again."); }
+      setStatus("err", (e && e.message) || "Something went wrong.");
+    })
+    .then(function(){ setBusy(false); });
+  }
+  btnGen.addEventListener("click", function(){ run("new"); });
+  btnRefine.addEventListener("click", function(){ run("refine"); });
+  fRefine.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); run("refine"); } });
+  btnFix.addEventListener("click", function(){ run("fix"); });
+  btnStop.addEventListener("click", function(){ if (ctl) ctl.abort(); });
+
+  /* ---------- copy / save ---------- */
+  function flash(btn, msg){ var old = btn.textContent; btn.textContent = msg; setTimeout(function(){ btn.textContent = old; }, 1400); }
+  function fallbackCopy(){
+    var ta = document.createElement("textarea"); ta.value = current; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} document.body.removeChild(ta);
+  }
+  btnCopy.addEventListener("click", function(){
+    if (!current) return;
+    var done = function(){ flash(btnCopy, "Copied"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(current).then(done, function(){ fallbackCopy(); done(); });
+    else { fallbackCopy(); done(); }
+  });
+  function slug(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section"; }
+  btnSave.addEventListener("click", function(){
+    if (!current) return;
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([current], { type: "text/html" }));
+    a.download = slug(widgetName()) + ".html";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+  });
+
+  /* ---------- password gate + boot ---------- */
+  function showGate(msg){ elApp.hidden = true; elGate.hidden = false; $("gate-status").textContent = msg || ""; $("f-pass").focus(); }
+  function showApp(){ elGate.hidden = true; elApp.hidden = false; }
+  function tryPassword(pw){
+    return fetch("/api/auth", { method: "POST", headers: { "x-app-password": pw } }).then(function(r){ return r.ok; });
+  }
+  $("btn-pass").addEventListener("click", submitPw);
+  $("f-pass").addEventListener("keydown", function(e){ if (e.key === "Enter") submitPw(); });
+  function submitPw(){
+    var pw = $("f-pass").value;
+    tryPassword(pw).then(function(ok){
+      if (!ok) { $("gate-status").textContent = "Wrong password."; return; }
+      password = pw; try { localStorage.setItem("sd_snippet_pw", pw); } catch (e) {}
+      showApp();
+    });
+  }
+  fetch("/api/config").then(function(r){ return r.json(); }).then(function(c){
+    config = c;
+    $("max-urls").textContent = c.maxUrls;
+    $("model-name").textContent = c.model;
+    if (!c.needsPassword) return showApp();
+    if (password) return tryPassword(password).then(function(ok){ ok ? showApp() : showGate(""); });
+    showGate("");
+  }).catch(function(){ showApp(); banner("Couldn't reach the server. Is it running?"); });
+})();
+</script>
+</body>
+</html>
