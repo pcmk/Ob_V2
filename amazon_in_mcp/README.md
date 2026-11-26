@@ -18,6 +18,8 @@ It never logs in, adds to your cart or buys anything. You always check out on Am
 | `price_history` | History plus lowest, highest and average |
 | `check_alerts` | Items at or below target, or at their lowest price seen |
 | `cart_link` | Add-to-cart link that you open yourself |
+| `send_test_whatsapp` | Send a test WhatsApp message to check your alert setup |
+| `preview_whatsapp_alerts` | Show which alerts would be sent now, without sending them |
 
 ## Price sources (checked in this order)
 
@@ -50,12 +52,31 @@ Claude Desktop / Claude Code config:
 
 Claude Code one-liner: `claude mcp add amazon-in -- python /ABSOLUTE/PATH/amazon_in_mcp/server.py`
 
+## WhatsApp price-drop alerts
+
+A WhatsApp alert is sent when `refresh_prices`, `record_price` or `server.py --refresh` finds that a tracked item:
+- is **at or below your target price**, or
+- **dropped at least 5%** since the last check (`WHATSAPP_ALERT_MIN_DROP_PCT`), or
+- hit its **lowest price seen**.
+
+The same alert isn't repeated: it sends again only if the price falls further, or rises and then drops again.
+
+Pick a provider with `WHATSAPP_PROVIDER` and set its env vars:
+
+| Provider | Env vars | Notes |
+|---|---|---|
+| `callmebot` | `WHATSAPP_TO=+91…`, `CALLMEBOT_APIKEY` | Free and easiest for personal use. Unofficial third-party service. Get the key by sending their bot the activation message shown on callmebot.com |
+| `twilio` | `WHATSAPP_TO=+91…`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | Paid. Free sandbox for testing: you must join it from your phone first |
+| `meta` | `WHATSAPP_TO=91…`, `META_WA_TOKEN`, `META_WA_PHONE_NUMBER_ID`, optional `META_GRAPH_VERSION` | Official Cloud API. Plain text only arrives within 24h of you messaging the business number; outside that window it needs an approved template |
+
+Keep tokens in env vars or your MCP config's `env` block. Never commit them.
+
 ## Scheduled price checks
 
 MCP can't push notifications. To check prices on a schedule, run this from cron:
 
 ```bash
-python server.py --refresh   # prints updated prices + alerts as JSON
+python server.py --refresh   # updates prices, sends WhatsApp alerts, prints JSON
 ```
 
 ## Tests

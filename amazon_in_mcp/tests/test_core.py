@@ -79,6 +79,7 @@ class TestParse(unittest.TestCase):
 class TestStore(unittest.TestCase):
     def setUp(self):
         self.s = core.Store(":memory:")
+        self.addCleanup(self.s.db.close)
 
     def test_track_and_history(self):
         self.s.upsert_item("B0B1234567", target_price=1000)

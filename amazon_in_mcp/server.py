@@ -1,7 +1,8 @@
 """Amazon.in personal shopping MCP server: search & compare, price tracking.
 
 Run:  python server.py            (stdio MCP server)
-      python server.py --refresh  (refresh all tracked prices once, print alerts; for cron)
+      python server.py --refresh  (refresh all tracked prices once, print alerts and
+                                   send WhatsApp price-drop alerts; for cron)
 
 It never logs in, adds to cart or buys. Checkout stays with you on amazon.in.
 """
@@ -15,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import core  # noqa: E402
+import notify  # noqa: E402
 from core import ShoppingError, Snapshot, Store  # noqa: E402
 
 store = Store()
@@ -152,6 +154,7 @@ def build_server():
             return {"note": "Nothing tracked yet."}
         res = _refresh(asins)
         res["alerts"] = _alerts()
+        res["whatsapp"] = notify.notify_price_drops(store, asins)
         return res
 
     @mcp.tool()
@@ -162,7 +165,8 @@ def build_server():
         if not store.get_item(asin):
             store.upsert_item(asin, title=title)
         store.add_snapshot(Snapshot(asin, title, price_inr, mrp_inr, in_stock, source="manual"))
-        return {"recorded": store.latest(asin), "stats": store.stats(asin)}
+        return {"recorded": store.latest(asin), "stats": store.stats(asin),
+                "whatsapp": notify.notify_price_drops(store, [asin])}
 
     @mcp.tool()
     def price_history(url_or_asin: str, limit: int = 50) -> dict:
@@ -176,6 +180,16 @@ def build_server():
         """Tracked products currently at/below target price or at their lowest seen price
         (based on stored data; call refresh_prices first for fresh numbers)."""
         return _alerts()
+
+    @mcp.tool()
+    def send_test_whatsapp(message: str = "Test from your Amazon.in price tracker") -> dict:
+        """Send a test WhatsApp message to check your alert setup."""
+        return {"provider": notify.provider(), "response": notify.send_whatsapp(message)[:300]}
+
+    @mcp.tool()
+    def preview_whatsapp_alerts() -> dict:
+        """Show which price-drop alerts would be sent now, without sending them."""
+        return notify.notify_price_drops(store, dry_run=True)
 
     @mcp.tool()
     def cart_link(urls_or_asins: list[str], quantity: int = 1) -> dict:
@@ -192,6 +206,7 @@ def main() -> None:
         asins = [i["asin"] for i in store.list_items()]
         res = _refresh(asins) if asins else {"updated": [], "errors": {}}
         res["alerts"] = _alerts()
+        res["whatsapp"] = notify.notify_price_drops(store, asins)
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return
     build_server().run()

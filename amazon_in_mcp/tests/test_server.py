@@ -45,7 +45,8 @@ class TestTools(unittest.TestCase):
         t = self.t
         self.assertEqual(set(t), {"search_products", "get_product", "compare_products", "track_product",
                                   "untrack_product", "set_target_price", "list_tracked", "refresh_prices",
-                                  "record_price", "price_history", "check_alerts", "cart_link"})
+                                  "record_price", "price_history", "check_alerts", "cart_link",
+                                  "send_test_whatsapp", "preview_whatsapp_alerts"})
         r = t["search_products"]("wireless earbuds")
         self.assertFalse(r["live_results"])
         self.assertIn("amazon.in/s?k=wireless+earbuds", r["search_url"])

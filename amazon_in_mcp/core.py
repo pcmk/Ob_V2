@@ -137,6 +137,11 @@ class Store:
                 ts TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_prices_asin_ts ON prices(asin, ts);
+            CREATE TABLE IF NOT EXISTS alerts (
+                asin TEXT PRIMARY KEY,
+                price REAL NOT NULL,
+                ts TEXT NOT NULL
+            );
             """
         )
         self.db.commit()
@@ -177,6 +182,7 @@ class Store:
         cur = self.db.execute("DELETE FROM items WHERE asin=?", (asin,))
         if not keep_history:
             self.db.execute("DELETE FROM prices WHERE asin=?", (asin,))
+        self.db.execute("DELETE FROM alerts WHERE asin=?", (asin,))
         self.db.commit()
         return cur.rowcount > 0
 
@@ -204,6 +210,23 @@ class Store:
     def latest(self, asin: str) -> dict | None:
         h = self.history(asin, 1)
         return h[0] if h else None
+
+    # alerts (last price we sent a WhatsApp alert at, to avoid repeats)
+    @_locked
+    def last_alert_price(self, asin: str) -> float | None:
+        r = self.db.execute("SELECT price FROM alerts WHERE asin=?", (asin,)).fetchone()
+        return r["price"] if r else None
+
+    @_locked
+    def record_alert(self, asin: str, price: float) -> None:
+        self.db.execute("INSERT OR REPLACE INTO alerts(asin, price, ts) VALUES (?,?,?)",
+                        (asin, price, self._now()))
+        self.db.commit()
+
+    @_locked
+    def clear_alert(self, asin: str) -> None:
+        self.db.execute("DELETE FROM alerts WHERE asin=?", (asin,))
+        self.db.commit()
 
     @_locked
     def stats(self, asin: str) -> dict:
