@@ -2,6 +2,7 @@
 store or listing page. Runs on YOUR PC (Amazon blocks cloud servers). Python 3.9+, stdlib only.
 
 Usage:
+  Easiest: open this file in IDLE and press F5, then paste the link when asked.
   python amazon_store_variants.py "<store, search or product link>"     -> variants.csv
   python amazon_store_variants.py "<link>" -o mybrand.csv --fast        (skip opening every variant page)
 
@@ -223,18 +224,38 @@ def _title(page: str) -> str | None:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))).strip() or None
 
 
-def _price(page: str) -> float | None:
-    area = page
-    for div in ("corePriceDisplay_desktop_feature_div", "corePrice_feature_div", "apex_desktop"):
-        i = page.find(f'id="{div}"')
-        if i >= 0:
-            area = page[i:i + 6000]
-            break
-    m = re.search(r'class="a-price(?! a-text-price)[^"]*"[^>]*>\s*<span class="a-offscreen">([^<]+)</span>', area)
-    if not m:
+def _num(text: str | None) -> float | None:
+    m = re.search(r"[\d,]+(?:\.\d+)?", text or "")
+    try:
+        return float(m.group(0).replace(",", "")) if m else None
+    except ValueError:
         return None
-    n = re.search(r"[\d,]+(?:\.\d+)?", m.group(1))
-    return float(n.group(0).replace(",", "")) if n else None
+
+
+def _price(page: str) -> float | None:
+    """Selling price. Tries, in order: hidden price text, the big price digits, buy-box JSON."""
+    areas = [a for a in (element_by_id(page, d) for d in (
+        "corePriceDisplay_desktop_feature_div", "corePrice_feature_div", "apex_desktop",
+        "corePrice_desktop", "apex_offerDisplay_desktop")) if a]
+    for area in areas:
+        for m in re.finditer(r'<span class="a-price(?! a-text-price)[^"]*"[^>]*>', area):
+            nxt = area.find('class="a-price', m.end())
+            block = area[m.end():nxt if nxt > 0 else m.end() + 800][:800]
+            off = re.search(r'class="a-offscreen">([^<]*)', block)
+            v = _num(off.group(1)) if off else None
+            if v is None:
+                whole = re.search(r'class="a-price-whole">([\d,]+)', block)
+                frac = re.search(r'class="a-price-fraction">(\d+)', block)
+                v = _num(whole.group(1)) if whole else None
+                if v is not None and frac:
+                    v += int(frac.group(1)) / 10 ** len(frac.group(1))
+            if v:
+                return v
+        m = re.search(r'class="a-price-whole">([\d,]+)', area)
+        if m and _num(m.group(1)):
+            return _num(m.group(1))
+    m = re.search(r'"priceAmount"\s*:\s*([\d.]+)', page)
+    return float(m.group(1)) if m else None
 
 
 _DIM_NAMES = {"size_name": "Size", "color_name": "Colour", "style_name": "Style",
@@ -333,7 +354,7 @@ def product_details(page: str) -> dict:
     area = element_by_id(page, "corePriceDisplay_desktop_feature_div") or \
         element_by_id(page, "corePrice_feature_div") or ""
     m = re.search(r'class="a-price a-text-price[^"]*"[^>]*>\s*<span class="a-offscreen">([^<]+)</span>', area)
-    mrp = float(re.sub(r"[^\d.]", "", m.group(1)) or 0) if m else None
+    mrp = _num(m.group(1)) if m else None
     d["mrp_inr"] = mrp or None
     if d["price_inr"] and mrp and mrp > d["price_inr"]:
         d["discount_pct"] = round(100 * (mrp - d["price_inr"]) / mrp)
@@ -348,6 +369,11 @@ def product_details(page: str) -> dict:
     d["review_count"] = int(m.group(0).replace(",", "")) if m else None
     av = element_by_id(page, "availability")
     d["availability"] = _text(av).replace("\n", " ")[:120] if av else None
+    if not d["availability"]:
+        if 'id="outOfStock"' in page or "Currently unavailable" in page:
+            d["availability"] = "Currently unavailable"
+        elif d["price_inr"] and ('id="add-to-cart-button"' in page or 'id="buy-now-button"' in page):
+            d["availability"] = "In stock (has Add to Cart)"
     fb = element_by_id(page, "feature-bullets") or element_by_id(page, "productFactsDesktopExpander") or ""
     bullets = [_text(x).replace("\n", " ") for x in
                re.findall(r'<span class="a-list-item[^"]*"[^>]*>(.*?)</span>\s*</li>', fb, re.S)]
@@ -370,13 +396,35 @@ DETAIL_COLS = ["price_inr", "mrp_inr", "discount_pct", "availability", "rating",
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("url", help="amazon.in store, search or product link (put it in quotes)")
-    ap.add_argument("-o", "--out", default="variants.csv")
+    ap.add_argument("url", nargs="?", help="amazon.in store, search or product link (put it in quotes)")
+    ap.add_argument("-o", "--out", default=None, help="CSV file (default: variants.csv next to this script)")
     ap.add_argument("--max-pages", type=int, default=20, help="store sub-pages / result pages to read")
+    ap.add_argument("--save-html", action="store_true",
+                    help="also save each fetched page into a 'pages' folder (to debug empty columns)")
     ap.add_argument("--fast", action="store_true",
                     help="don't open every variant: siblings get the family's description/attributes "
                          "but no own price/stock (much faster)")
     args = ap.parse_args()
+    if not args.url:  # e.g. started with F5 in IDLE or by double-click: ask for the link
+        args.url = input("Paste the amazon.in product / store / search link and press Enter:\n> ").strip().strip('"')
+        if not args.url:
+            print("No link given.")
+            return 1
+        if input("Fast mode (skip opening every variant page)? y/N: ").strip().lower() == "y":
+            args.fast = True
+    from pathlib import Path
+    if not args.out:
+        args.out = str(Path(__file__).resolve().parent / "variants.csv")
+    if args.save_html:
+        global fetch
+        _plain_fetch, folder = fetch, Path(args.out).resolve().parent / "pages"
+        folder.mkdir(exist_ok=True)
+
+        def fetch(url: str) -> str:  # noqa: F811 - wraps the original to keep a copy
+            page = _plain_fetch(url)
+            name = re.sub(r"[^A-Za-z0-9]+", "_", url.replace(BASE, ""))[:80] or "page"
+            (folder / f"{name}.html").write_text(page, encoding="utf-8")
+            return page
 
     print("1) Reading product list ...")
     try:
