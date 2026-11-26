@@ -58,12 +58,13 @@ function refreshPrices() {
   if (last < 2) { toast_('Paste amazon.in links in column A of "Tracker" first.'); return; }
 
   const rows = tracker.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  const urls = linkUrls_(tracker.getRange(2, COL.URL, last - 1, 1));
   const now = new Date();
   const alerts = [];
 
   rows.forEach((row, i) => {
     const r = i + 2;
-    const url = String(row[COL.URL - 1] || '').trim();
+    const url = urls[i];
     if (!url) return;
     const asin = extractAsin(url);
     if (!asin) { tracker.getRange(r, COL.STATUS).setValue('BAD LINK (no ASIN)'); return; }
@@ -203,6 +204,29 @@ function sendAlerts_(alerts) {
 }
 
 // ------------------------------------------------------------------ helpers
+
+/**
+ * Real URL for each cell in a one-column range. Handles plain URLs, pasted links whose
+ * text is the product name (rich-text links), and =HYPERLINK("url","text") formulas.
+ */
+function linkUrls_(range) {
+  const values = range.getValues();
+  const formulas = range.getFormulas();
+  const rich = range.getRichTextValues();
+  return values.map((v, i) => {
+    const rt = rich[i][0];
+    let url = rt && rt.getLinkUrl();
+    if (!url && rt) {
+      const run = rt.getRuns().find(x => x.getLinkUrl());
+      url = run && run.getLinkUrl();
+    }
+    if (!url) {
+      const m = String(formulas[i][0] || '').match(/HYPERLINK\(\s*"([^"]+)"/i);
+      url = m && m[1];
+    }
+    return String(url || v[0] || '').trim();
+  });
+}
 
 function setupSheets_() {
   const ss = SpreadsheetApp.getActive();
