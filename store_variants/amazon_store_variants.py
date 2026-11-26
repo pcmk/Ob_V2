@@ -2,16 +2,19 @@
 store or listing page. Runs on YOUR PC (Amazon blocks cloud servers). Python 3.9+, stdlib only.
 
 Usage:
-  python amazon_store_variants.py "<store or search link>"            -> variants.csv
-  python amazon_store_variants.py "<link>" -o mybrand.csv --prices     (also fetch each variant's price; slower)
+  python amazon_store_variants.py "<store, search or product link>"     -> variants.csv
+  python amazon_store_variants.py "<link>" -o mybrand.csv --fast        (skip opening every variant page)
 
 Accepted links:
+  - Product:       https://www.amazon.in/<name>/dp/<ASIN>   (that product's whole colour/size family)
   - Brand store:   https://www.amazon.in/stores/<Brand>/page/<id>   (its sub-pages are followed too)
   - Search/brand:  https://www.amazon.in/s?k=...  or  ...&rh=p_89:<Brand>  or  ?me=<SellerID>
                    (follows up to --max-pages result pages)
 
-Output columns: parent_asin, asin, title, <one column per variant dimension, e.g. Size, Colour>,
-                price_inr (only with --prices), url
+Output: one row per variant ASIN (every colour x size). Columns: parent_asin, asin, title, brand,
+        <Size, Colour, ...>, price, MRP, discount %, availability, rating, review count,
+        "About this item" bullets, description, main image, <one column per product attribute,
+        e.g. Material composition, Fit type, Sleeve type, Collar style>, url, status
 
 Notes:
   - Store pages load their product grid with JavaScript, so a script sees no products there.
@@ -134,6 +137,9 @@ def next_search_page(url: str, page_no: int) -> str:
 
 def collect_asins(start_url: str, max_pages: int) -> list[str]:
     url = start_url if start_url.startswith("http") else "https://" + start_url
+    m = re.search(rf"/(?:dp|gp/product)/({ASIN})", url)
+    if m and "/stores/" not in url:
+        return [m.group(1)]   # a single product link: its whole variant family is read in step 2
     asins: list[str] = []
 
     def add(new):
@@ -257,14 +263,119 @@ def variants_from_product(page: str, asin: str) -> dict:
             "dims": [str(d) for d in dims], "children": children}
 
 
+# ------------------------------------------------------------------ full product details
+
+def _text(fragment: str) -> str:
+    t = re.sub(r"<(script|style)\b.*?</\1>", " ", fragment, flags=re.S | re.I)
+    t = re.sub(r"<br\s*/?>|</(p|li|div|tr)>", "\n", t, flags=re.I)
+    t = html.unescape(re.sub(r"<[^>]+>", " ", t))
+    t = t.replace("\u200e", "").replace("\u200f", "")
+    lines = [re.sub(r"[ \t\xa0]+", " ", x).strip() for x in t.split("\n")]
+    return "\n".join(x for x in lines if x)
+
+
+def element_by_id(page: str, el_id: str) -> str | None:
+    """Inner HTML of the element with this id (handles nesting of the same tag)."""
+    m = re.search(r'<([a-zA-Z0-9]+)\b[^>]*\bid="%s"[^>]*>' % re.escape(el_id), page)
+    if not m:
+        return None
+    tag, start = m.group(1).lower(), m.end()
+    tok = re.compile(r"<(/?)%s\b[^>]*?(/?)>" % tag, re.I)
+    depth = 1
+    for t in tok.finditer(page, start):
+        if t.group(1):
+            depth -= 1
+            if depth == 0:
+                return page[start:t.start()]
+        elif not t.group(2):
+            depth += 1
+    return page[start:start + 20000]
+
+
+_ATTR_SECTIONS = ["productOverview_feature_div", "poExpander", "productFactsDesktopExpander",
+                  "productFactsDesktop_feature_div", "productDetails_feature_div",
+                  "productDetails_techSpec_section_1", "productDetails_techSpec_section_2",
+                  "productDetails_detailBullets_sections1", "detailBullets_feature_div",
+                  "prodDetails", "technicalSpecifications_feature_div"]
+_SKIP_ATTRS = {"customer reviews", "best sellers rank", "asin"}
+
+
+def attributes(page: str) -> dict[str, str]:
+    """Key/value attributes from the product overview, product facts and details tables."""
+    out: dict[str, str] = {}
+
+    def put(k: str, v: str):
+        k = _text(k).replace("\n", " ").strip().rstrip(":").strip()
+        v = _text(v).replace("\n", " ").strip()
+        if k and v and len(k) <= 60 and k.lower() not in _SKIP_ATTRS and k not in out:
+            out[k] = v[:500]
+
+    for sec_id in _ATTR_SECTIONS:
+        sec = element_by_id(page, sec_id)
+        if not sec:
+            continue
+        # tables:  <tr><th|td>Key</th|td><td>Value</td></tr>
+        for row in re.findall(r"<tr\b.*?</tr>", sec, re.S | re.I):
+            cells = re.findall(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", row, re.S | re.I)
+            if len(cells) >= 2:
+                put(cells[0], cells[1])
+        # detail bullets:  <span class="a-text-bold">Key : </span> <span>Value</span>
+        for k, v in re.findall(r'<span class="a-text-bold">(.*?)</span>\s*<span[^>]*>(.*?)</span>', sec, re.S):
+            put(k, v)
+        # fashion "product facts" grid: left column key, right column value
+        for k, v in re.findall(r'a-col-left[^>]*>(.*?)</div>\s*<div[^>]*a-col-right[^>]*>(.*?)</div>', sec, re.S):
+            put(k, v)
+    return out
+
+
+def product_details(page: str) -> dict:
+    d: dict = {"title": _title(page), "price_inr": _price(page)}
+    area = element_by_id(page, "corePriceDisplay_desktop_feature_div") or \
+        element_by_id(page, "corePrice_feature_div") or ""
+    m = re.search(r'class="a-price a-text-price[^"]*"[^>]*>\s*<span class="a-offscreen">([^<]+)</span>', area)
+    mrp = float(re.sub(r"[^\d.]", "", m.group(1)) or 0) if m else None
+    d["mrp_inr"] = mrp or None
+    if d["price_inr"] and mrp and mrp > d["price_inr"]:
+        d["discount_pct"] = round(100 * (mrp - d["price_inr"]) / mrp)
+    by = element_by_id(page, "bylineInfo")
+    if by:
+        b = _text(by)
+        d["brand"] = re.sub(r"^(Visit the |Brand:\s*)|\s+Store$", "", b).strip()
+    m = re.search(r"([0-5](?:\.\d)?) out of 5 stars", page)
+    d["rating"] = float(m.group(1)) if m else None
+    rc = element_by_id(page, "acrCustomerReviewText")
+    m = re.search(r"[\d,]+", _text(rc)) if rc else None
+    d["review_count"] = int(m.group(0).replace(",", "")) if m else None
+    av = element_by_id(page, "availability")
+    d["availability"] = _text(av).replace("\n", " ")[:120] if av else None
+    fb = element_by_id(page, "feature-bullets") or element_by_id(page, "productFactsDesktopExpander") or ""
+    bullets = [_text(x).replace("\n", " ") for x in
+               re.findall(r'<span class="a-list-item[^"]*"[^>]*>(.*?)</span>\s*</li>', fb, re.S)]
+    d["about_this_item"] = " | ".join(b for b in bullets if b)
+    desc = element_by_id(page, "productDescription")
+    d["description"] = _text(desc).replace("\n", " ")[:3000] if desc else ""
+    m = re.search(r'"hiRes"\s*:\s*"(https://[^"]+)"', page) or \
+        re.search(r'id="landingImage"[^>]*data-old-hires="(https://[^"]+)"', page)
+    d["main_image"] = m.group(1) if m else ""
+    d["attributes"] = attributes(page)
+    return d
+
+
 # ------------------------------------------------------------------ main
+
+BASE_COLS = ["parent_asin", "asin", "is_listed_asin", "title", "brand"]
+DETAIL_COLS = ["price_inr", "mrp_inr", "discount_pct", "availability", "rating", "review_count",
+               "about_this_item", "description", "main_image", "url", "status"]
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("url", help="amazon.in store or search link (put it in quotes)")
+    ap.add_argument("url", help="amazon.in store, search or product link (put it in quotes)")
     ap.add_argument("-o", "--out", default="variants.csv")
     ap.add_argument("--max-pages", type=int, default=20, help="store sub-pages / result pages to read")
-    ap.add_argument("--prices", action="store_true", help="also open every variant to read its price")
+    ap.add_argument("--fast", action="store_true",
+                    help="don't open every variant: siblings get the family's description/attributes "
+                         "but no own price/stock (much faster)")
     args = ap.parse_args()
 
     print("1) Reading product list ...")
@@ -278,52 +389,68 @@ def main() -> int:
         print("   None found. Try the brand's search link instead of the store link.")
         return 1
 
-    print("2) Reading variants from each product page ...")
+    print("2) Reading each product family (all colours x sizes) ...")
     rows: list[dict] = []
-    all_dims: list[str] = []
-    covered: set[str] = set()   # ASINs already listed as a variant of something
-    blocked = []
+    dims_all: list[str] = []
+    attrs_all: list[str] = []
+    covered: set[str] = set()
+    blocked: list[str] = []
+
+    def add_attrs(det: dict, row: dict):
+        for k, v in det.get("attributes", {}).items():
+            if k not in attrs_all:
+                attrs_all.append(k)
+            row[k] = v
+
     for i, asin in enumerate(listing, 1):
         if asin in covered:
             continue
         try:
-            info = variants_from_product(fetch(f"{BASE}/dp/{asin}"), asin)
+            page = fetch(f"{BASE}/dp/{asin}")
         except Blocked:
             blocked.append(asin)
             print(f"   [{i}/{len(listing)}] {asin}: robot check, skipped")
             continue
-        for d in info["dims"]:
-            if d not in all_dims:
-                all_dims.append(d)
-        kids = info["children"] or {asin: []}
-        print(f"   [{i}/{len(listing)}] {asin}: {len(kids)} variant(s)  {info['title'] or ''}"[:110])
-        for child, values in kids.items():
+        fam = variants_from_product(page, asin)
+        base = product_details(page)
+        for d in fam["dims"]:
+            if d not in dims_all:
+                dims_all.append(d)
+        kids = fam["children"] or {asin: []}
+        print(f"   [{i}/{len(listing)}] {asin}: {len(kids)} variant(s)  {base['title'] or ''}"[:110])
+        for n, (child, values) in enumerate(kids.items(), 1):
             covered.add(child)
-            row = {"parent_asin": info["parent"], "asin": child, "title": info["title"] or "",
-                   "url": f"{BASE}/dp/{child}", "price_inr": info["price"] if child == asin else ""}
-            for d, v in zip(info["dims"], values):
+            row = {"parent_asin": fam["parent"], "asin": child, "is_listed_asin": "yes" if child == asin else "",
+                   "url": f"{BASE}/dp/{child}"}
+            for d, v in zip(fam["dims"], values):
                 row[d] = v
+            det, status = base, "OK"
+            if child != asin:
+                if args.fast:
+                    det, status = {k: base.get(k) for k in ("title", "brand", "about_this_item",
+                                                            "description", "attributes")}, "FAMILY DATA ONLY"
+                else:
+                    try:
+                        det = product_details(fetch(row["url"]))
+                    except Blocked:
+                        det, status = {k: base.get(k) for k in ("title", "brand")}, "BLOCKED (robot check)"
+                        blocked.append(child)
+                    print(f"      variant {n}/{len(kids)} {child} {' / '.join(map(str, values))}: {status}")
+            for k in ("title", "brand", *DETAIL_COLS):
+                if k in det and det[k] is not None and k not in ("url",):
+                    row[k] = det[k]
+            row["status"] = status
+            add_attrs(det, row)
             rows.append(row)
 
-    if args.prices:
-        todo = [r for r in rows if r["price_inr"] in ("", None)]
-        print(f"3) Reading prices for {len(todo)} variant(s) ...")
-        for n, r in enumerate(todo, 1):
-            try:
-                r["price_inr"] = _price(fetch(r["url"])) or ""
-            except Blocked:
-                print(f"   {r['asin']}: robot check, price skipped")
-            if n % 10 == 0:
-                print(f"   {n}/{len(todo)}")
-
-    cols = ["parent_asin", "asin", "title", *all_dims, "price_inr", "url"]
+    cols = [*BASE_COLS, *dims_all, *DETAIL_COLS[:-2], *attrs_all, "url", "status"]
     with open(args.out, "w", newline="", encoding="utf-8-sig") as f:   # utf-8-sig: opens cleanly in Excel
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    print(f"\nDone: {len(rows)} row(s) from {len(listing)} listed product(s) -> {args.out}")
+    print(f"\nDone: {len(rows)} variant row(s) from {len(listing)} listed product(s) -> {args.out}")
     if blocked:
-        print(f"{len(blocked)} product(s) skipped by robot checks: {', '.join(blocked)}. Re-run later.")
+        print(f"{len(blocked)} page(s) hit robot checks: {', '.join(blocked[:20])}. Re-run later for those.")
     return 0
 
 
