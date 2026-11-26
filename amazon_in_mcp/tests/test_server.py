@@ -21,12 +21,12 @@ class _StubFastMCP:
 
 
 def _install_stub():
-    if "mcp.server.fastmcp" in sys.modules and hasattr(sys.modules["mcp.server.fastmcp"], "_stub"):
+    if hasattr(sys.modules.get("mcp.server.fastmcp"), "_stub"):
         return
     mod = types.ModuleType("mcp.server.fastmcp")
     mod.FastMCP, mod._stub = _StubFastMCP, True
     sys.modules.update({"mcp": types.ModuleType("mcp"), "mcp.server": types.ModuleType("mcp.server"),
-                        "mcp.server.fastmcp": mod})
+                        "mcp.server.fastmcp": mod, "mcp.server.mcpserver": None})
 
 
 class TestTools(unittest.TestCase):

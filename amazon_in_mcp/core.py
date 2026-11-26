@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -98,12 +99,22 @@ def default_db_path() -> Path:
     return Path(os.environ.get("AMAZON_MCP_DB", Path.home() / ".amazon_in_mcp" / "shop.db"))
 
 
+def _locked(fn):
+    def wrapper(self, *a, **kw):
+        with self.lock:
+            return fn(self, *a, **kw)
+    wrapper.__name__, wrapper.__doc__ = fn.__name__, fn.__doc__
+    return wrapper
+
+
 class Store:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path else default_db_path()
         if str(self.path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(self.path))
+        # MCP servers run sync tools in worker threads: share one connection behind a lock.
+        self.db = sqlite3.connect(str(self.path), check_same_thread=False)
+        self.lock = threading.RLock()
         self.db.row_factory = sqlite3.Row
         self.db.executescript(
             """
@@ -135,6 +146,7 @@ class Store:
         return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
     # items
+    @_locked
     def upsert_item(self, asin: str, title: str | None = None,
                     target_price: float | None = None, notes: str | None = None) -> None:
         row = self.get_item(asin)
@@ -151,13 +163,16 @@ class Store:
             )
         self.db.commit()
 
+    @_locked
     def get_item(self, asin: str) -> dict | None:
         r = self.db.execute("SELECT * FROM items WHERE asin=?", (asin,)).fetchone()
         return dict(r) if r else None
 
+    @_locked
     def list_items(self) -> list[dict]:
         return [dict(r) for r in self.db.execute("SELECT * FROM items ORDER BY added_at")]
 
+    @_locked
     def delete_item(self, asin: str, keep_history: bool = False) -> bool:
         cur = self.db.execute("DELETE FROM items WHERE asin=?", (asin,))
         if not keep_history:
@@ -166,6 +181,7 @@ class Store:
         return cur.rowcount > 0
 
     # prices
+    @_locked
     def add_snapshot(self, s: Snapshot) -> None:
         self.db.execute(
             "INSERT INTO prices(asin, price, mrp, in_stock, rating, review_count, source, ts)"
@@ -177,6 +193,7 @@ class Store:
             self.db.execute("UPDATE items SET title=COALESCE(title, ?) WHERE asin=?", (s.title, s.asin))
         self.db.commit()
 
+    @_locked
     def history(self, asin: str, limit: int = 100) -> list[dict]:
         rows = self.db.execute(
             "SELECT price, mrp, in_stock, rating, review_count, source, ts FROM prices"
@@ -188,6 +205,7 @@ class Store:
         h = self.history(asin, 1)
         return h[0] if h else None
 
+    @_locked
     def stats(self, asin: str) -> dict:
         r = self.db.execute(
             "SELECT MIN(price) lo, MAX(price) hi, AVG(price) avg, COUNT(price) n FROM prices"

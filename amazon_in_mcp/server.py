@@ -49,9 +49,12 @@ def _alerts() -> list[dict]:
 # ------------------------------------------------------------------ tools
 
 def build_server():
-    from mcp.server.fastmcp import FastMCP
+    try:  # mcp 2.x renamed FastMCP -> MCPServer
+        from mcp.server.mcpserver import MCPServer as Server
+    except ImportError:  # mcp 1.x
+        from mcp.server.fastmcp import FastMCP as Server
 
-    mcp = FastMCP("amazon-in-shopping")
+    mcp = Server("amazon-in-shopping")
 
     @mcp.tool()
     def search_products(query: str, max_results: int = 10,
