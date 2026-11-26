@@ -4,17 +4,18 @@
  * Sheet "Tracker":  paste product links in column A (from row 2). Optional target price in column F.
  * Sheet "History":  one row per product per check (filled automatically).
  *
+ * Prices are checked by pc_price_checker.py on your PC (Amazon blocks Google's servers),
+ * which talks to this script through its Web app URL (doGet / doPost below).
+ *
  * Menu "Price Tracker":
- *   - Refresh prices now
- *   - Turn on daily refresh   (time trigger, ~9 AM in the sheet's timezone)
- *   - Turn off daily refresh
+ *   - Set up PC access key   (shows the key the PC script needs)
+ *   - Refresh from Google servers (usually BLOCKED by Amazon)
  *
  * Optional alerts when price <= target, or drops >= DROP_ALERT_PCT vs last check:
  *   - Email: on by default, to the sheet owner.
  *   - WhatsApp (CallMeBot): set Script Properties WHATSAPP_TO (+91...) and CALLMEBOT_APIKEY.
  *     (Project Settings → Script Properties)
  *
- * NOTE: Amazon may block automated fetches with a captcha. Those rows show Status = BLOCKED.
  */
 
 const TRACKER = 'Tracker';
@@ -31,9 +32,10 @@ const EMAIL_ALERTS = true;
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Price Tracker')
-    .addItem('Refresh prices now', 'refreshPrices')
-    .addItem('Turn on daily refresh', 'enableDailyTrigger')
-    .addItem('Turn off daily refresh', 'disableDailyTrigger')
+    .addItem('Set up PC access key', 'setupPcKey')
+    .addSeparator()
+    .addItem('Refresh from Google servers (usually BLOCKED)', 'refreshPrices')
+    .addItem('Turn off Google-side daily refresh', 'disableDailyTrigger')
     .addToUi();
   setupSheets_();
 }
@@ -52,65 +54,140 @@ function disableDailyTrigger() {
 
 // ------------------------------------------------------------------ main job
 
+/** Google-side refresh. Amazon usually blocks Google's servers (BLOCKED); prefer the PC checker. */
 function refreshPrices() {
   const { tracker, history } = setupSheets_();
-  const last = tracker.getLastRow();
-  if (last < 2) { toast_('Paste amazon.in links in column A of "Tracker" first.'); return; }
-
-  const rows = tracker.getRange(2, 1, last - 1, HEADERS.length).getValues();
-  const urls = linkUrls_(tracker.getRange(2, COL.URL, last - 1, 1));
+  const items = listItems_(tracker);
+  if (!items.length) { toast_('Paste amazon.in links in column A of "Tracker" first.'); return; }
   const now = new Date();
   const alerts = [];
-
-  rows.forEach((row, i) => {
-    const r = i + 2;
-    const url = urls[i];
-    if (!url) return;
-    const asin = extractAsin(url);
-    if (!asin) { tracker.getRange(r, COL.STATUS).setValue('BAD LINK (no ASIN)'); return; }
-
+  items.forEach(it => {
+    if (!it.asin) { applyResult_(tracker, history, it.row, {}, 'BAD LINK (no ASIN)', now, alerts); return; }
     let snap, status;
     try {
-      snap = fetchProduct_(asin);
+      snap = fetchProduct_(it.asin);
       status = snap.blocked ? 'BLOCKED (captcha)' : (snap.price == null ? 'NO PRICE FOUND' : 'OK');
     } catch (e) {
       snap = {}; status = 'ERROR: ' + String(e.message || e).slice(0, 80);
     }
-
-    const prevPrice = toNum_(row[COL.PRICE - 1]);
-    const prevLowest = toNum_(row[COL.LOWEST - 1]);
-    const target = toNum_(row[COL.TARGET - 1]);
-    const title = snap.title || row[COL.TITLE - 1] || '';
-
-    tracker.getRange(r, COL.ASIN).setValue(asin);
-    tracker.getRange(r, COL.TITLE).setValue(title);
-    tracker.getRange(r, COL.CHECKED).setValue(now);
-    tracker.getRange(r, COL.STATUS).setValue(status);
-    history.appendRow([now, asin, title, snap.price ?? '', snap.mrp ?? '', status]);
-
-    if (status === 'OK') {
-      const p = snap.price;
-      tracker.getRange(r, COL.PRICE).setValue(p);
-      tracker.getRange(r, COL.MRP).setValue(snap.mrp ?? '');
-      tracker.getRange(r, COL.LOWEST).setValue(prevLowest == null ? p : Math.min(prevLowest, p));
-
-      const reasons = [];
-      if (target != null && p <= target && (prevPrice == null || prevPrice > target)) {
-        reasons.push('at/below your target ₹' + fmt_(target));
-      }
-      if (prevPrice != null && p < prevPrice && (prevPrice - p) / prevPrice * 100 >= DROP_ALERT_PCT) {
-        reasons.push('dropped ' + Math.round((prevPrice - p) / prevPrice * 100) + '% from ₹' + fmt_(prevPrice));
-      }
-      if (reasons.length) {
-        alerts.push('📉 ' + (title || asin).slice(0, 80) + '\nNow ₹' + fmt_(p) + ': ' +
-                    reasons.join('; ') + '\nhttps://www.amazon.in/dp/' + asin);
-      }
-    }
+    applyResult_(tracker, history, it.row, snap, status, now, alerts);
     Utilities.sleep(GAP_MS);
   });
-
   if (alerts.length) sendAlerts_(alerts);
-  toast_('Checked ' + rows.filter(r => r[0]).length + ' product(s). Alerts: ' + alerts.length);
+  toast_('Checked ' + items.length + ' product(s). Alerts: ' + alerts.length);
+}
+
+/** Rows of the Tracker sheet that have a link: [{row, url, asin, target}]. */
+function listItems_(tracker) {
+  const last = tracker.getLastRow();
+  if (last < 2) return [];
+  const rows = tracker.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  const urls = linkUrls_(tracker.getRange(2, COL.URL, last - 1, 1));
+  const out = [];
+  rows.forEach((row, i) => {
+    if (!urls[i]) return;
+    out.push({ row: i + 2, url: urls[i], asin: extractAsin(urls[i]), target: toNum_(row[COL.TARGET - 1]) });
+  });
+  return out;
+}
+
+/** Write one check result to the sheet; push an alert message if the price dropped. */
+function applyResult_(tracker, history, r, snap, status, now, alerts) {
+  const row = tracker.getRange(r, 1, 1, HEADERS.length).getValues()[0];
+  const asin = extractAsin(linkUrls_(tracker.getRange(r, COL.URL, 1, 1))[0]) || '';
+  const prevPrice = toNum_(row[COL.PRICE - 1]);
+  const prevLowest = toNum_(row[COL.LOWEST - 1]);
+  const target = toNum_(row[COL.TARGET - 1]);
+  const title = (snap && snap.title) || row[COL.TITLE - 1] || '';
+
+  tracker.getRange(r, COL.ASIN).setValue(asin);
+  tracker.getRange(r, COL.TITLE).setValue(title);
+  tracker.getRange(r, COL.CHECKED).setValue(now);
+  tracker.getRange(r, COL.STATUS).setValue(status);
+  history.appendRow([now, asin, title, snap.price ?? '', snap.mrp ?? '', status]);
+  if (status !== 'OK') return;
+
+  const p = snap.price;
+  tracker.getRange(r, COL.PRICE).setValue(p);
+  tracker.getRange(r, COL.MRP).setValue(snap.mrp ?? '');
+  tracker.getRange(r, COL.LOWEST).setValue(prevLowest == null ? p : Math.min(prevLowest, p));
+
+  const reasons = [];
+  if (target != null && p <= target && (prevPrice == null || prevPrice > target)) {
+    reasons.push('at/below your target ₹' + fmt_(target));
+  }
+  if (prevPrice != null && p < prevPrice && (prevPrice - p) / prevPrice * 100 >= DROP_ALERT_PCT) {
+    reasons.push('dropped ' + Math.round((prevPrice - p) / prevPrice * 100) + '% from ₹' + fmt_(prevPrice));
+  }
+  if (reasons.length) {
+    alerts.push('📉 ' + String(title || asin).slice(0, 80) + '\nNow ₹' + fmt_(p) + ': ' +
+                reasons.join('; ') + '\nhttps://www.amazon.in/dp/' + asin);
+  }
+}
+
+// ------------------------------------------------------------------ PC checker web app
+// Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone).
+// The PC script calls it with ?key=<access key>. Without the key it refuses everything.
+
+function setupPcKey() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('PC_KEY');
+  if (!key) { key = Utilities.getUuid().replace(/-/g, ''); props.setProperty('PC_KEY', key); }
+  SpreadsheetApp.getUi().alert('PC access key',
+    'Your key (keep it private):\n\n' + key +
+    '\n\nPut it in config.json on your PC together with the Web app URL ' +
+    '(Deploy → Manage deployments → copy the URL ending in /exec).',
+    SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function authorized_(e) {
+  const key = PropertiesService.getScriptProperties().getProperty('PC_KEY');
+  return !!key && e && e.parameter && e.parameter.key === key;
+}
+
+/** GET ?key=...  → {items: [{row, asin}]} */
+function doGet(e) {
+  if (!authorized_(e)) return json_({ error: 'unauthorized' });
+  const { tracker, history } = setupSheets_();
+  const items = listItems_(tracker);
+  const now = new Date();
+  items.filter(it => !it.asin).forEach(it => applyResult_(tracker, history, it.row, {}, 'BAD LINK (no ASIN)', now, []));
+  return json_({ items: items.filter(it => it.asin).map(it => ({ row: it.row, asin: it.asin })) });
+}
+
+/** POST ?key=...  body {results: [{row, asin, title, price, mrp, status}]} → {updated, alerts} */
+function doPost(e) {
+  if (!authorized_(e)) return json_({ error: 'unauthorized' });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const body = JSON.parse((e.postData && e.postData.contents) || '{}');
+    const { tracker, history } = setupSheets_();
+    const now = new Date();
+    const alerts = [];
+    let updated = 0;
+    (body.results || []).forEach(res => {
+      const r = Number(res.row);
+      if (!(r >= 2) || r > tracker.getLastRow()) return;
+      // Only accept a result for the ASIN that is (still) on that row.
+      const asin = extractAsin(linkUrls_(tracker.getRange(r, COL.URL, 1, 1))[0]);
+      if (!asin || asin !== res.asin) return;
+      const status = String(res.status || 'ERROR').slice(0, 100);
+      const price = typeof res.price === 'number' ? res.price : null;
+      applyResult_(tracker, history, r,
+        { title: res.title || null, price: price, mrp: typeof res.mrp === 'number' ? res.mrp : null },
+        status === 'OK' && price == null ? 'NO PRICE FOUND' : status, now, alerts);
+      updated++;
+    });
+    if (alerts.length) sendAlerts_(alerts);
+    return json_({ updated: updated, alerts: alerts.length });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ------------------------------------------------------------------ fetch & parse
