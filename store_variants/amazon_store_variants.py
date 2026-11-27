@@ -297,7 +297,7 @@ def _text(fragment: str) -> str:
 
 def element_by_id(page: str, el_id: str) -> str | None:
     """Inner HTML of the element with this id (handles nesting of the same tag)."""
-    m = re.search(r'<([a-zA-Z0-9]+)\b[^>]*\bid="%s"[^>]*>' % re.escape(el_id), page)
+    m = re.search(r'<([a-zA-Z0-9]+)\b[^>]*(?<![\w-])id="%s"[^>]*>' % re.escape(el_id), page)
     if not m:
         return None
     tag, start = m.group(1).lower(), m.end()
@@ -349,6 +349,45 @@ def attributes(page: str) -> dict[str, str]:
     return out
 
 
+MAX_IMAGES = 8
+
+
+def gallery(page: str) -> list[str]:
+    """Full image gallery (hi-res links) of the colour shown on this page."""
+    m = re.search(r"'colorImages'\s*:\s*\{\s*'initial'\s*:\s*[\w.$]*parseJSON\('(.*?)'\)", page, re.S)
+    imgs = []
+    if m:
+        try:
+            for x in json.loads(m.group(1).replace("\\'", "'")):
+                u = x.get("hiRes") or x.get("large")
+                if u and u not in imgs:
+                    imgs.append(u)
+        except json.JSONDecodeError:
+            pass
+    if not imgs:
+        imgs = list(dict.fromkeys(re.findall(r'"hiRes"\s*:\s*"(https://[^"]+)"', page)))
+    return imgs[:MAX_IMAGES]
+
+
+def colour_main_images(page: str) -> dict[str, str]:
+    """{colour name: main image link} for every colour of the product."""
+    ci = _json_after(page, "colorImages") or {}
+    out = {}
+    if isinstance(ci, dict):
+        for colour, imgs in ci.items():
+            if isinstance(imgs, list) and imgs:
+                main = next((x for x in imgs if x.get("variant") == "MAIN"), imgs[0])
+                u = main.get("hiRes") or main.get("large")
+                if u:
+                    out[colour] = u
+    return out
+
+
+def landing_colour(page: str) -> str | None:
+    m = re.search(r'"landingAsinColor"\s*:\s*"([^"]+)"', page)
+    return html.unescape(m.group(1)) if m else None
+
+
 def product_details(page: str) -> dict:
     d: dict = {"title": _title(page), "price_inr": _price(page)}
     area = element_by_id(page, "corePriceDisplay_desktop_feature_div") or \
@@ -383,6 +422,7 @@ def product_details(page: str) -> dict:
     m = re.search(r'"hiRes"\s*:\s*"(https://[^"]+)"', page) or \
         re.search(r'id="landingImage"[^>]*data-old-hires="(https://[^"]+)"', page)
     d["main_image"] = m.group(1) if m else ""
+    d["images"] = gallery(page)
     d["attributes"] = attributes(page)
     return d
 
@@ -391,7 +431,8 @@ def product_details(page: str) -> dict:
 
 BASE_COLS = ["parent_asin", "asin", "is_listed_asin", "title", "brand"]
 DETAIL_COLS = ["price_inr", "mrp_inr", "discount_pct", "availability", "rating", "review_count",
-               "about_this_item", "description", "main_image", "url", "status"]
+               "about_this_item", "description", "url", "status"]
+IMAGE_COLS = ["image_preview", *[f"image_{i}" for i in range(1, MAX_IMAGES + 1)]]
 
 
 def main() -> int:
@@ -461,6 +502,9 @@ def main() -> int:
             continue
         fam = variants_from_product(page, asin)
         base = product_details(page)
+        colour_imgs = colour_main_images(page)
+        land_colour = landing_colour(page)
+        colour_dim = next((k for k, d in enumerate(fam["dims"]) if d.lower().startswith(("colo", "color"))), None)
         for d in fam["dims"]:
             if d not in dims_all:
                 dims_all.append(d)
@@ -488,10 +532,24 @@ def main() -> int:
                 if k in det and det[k] is not None and k not in ("url",):
                     row[k] = det[k]
             row["status"] = status
+            # images: this variant's own gallery if its page was opened; else its colour's images
+            colour = values[colour_dim] if colour_dim is not None and colour_dim < len(values) else None
+            imgs = list(det.get("images") or []) if det is not base or child == asin else []
+            if not imgs and colour is not None and colour == land_colour:
+                imgs = list(base.get("images") or [])
+            if not imgs and colour in colour_imgs:
+                imgs = [colour_imgs[colour]]
+            if not imgs and base.get("images") and colour_dim is None:
+                imgs = list(base["images"])
+            for k, u in enumerate(imgs[:MAX_IMAGES], 1):
+                row[f"image_{k}"] = u
+            if imgs:
+                row["image_preview"] = f'=IMAGE("{imgs[0]}")'
             add_attrs(det, row)
             rows.append(row)
 
-    cols = [*BASE_COLS, *dims_all, *DETAIL_COLS[:-2], *attrs_all, "url", "status"]
+    used_imgs = [c for c in IMAGE_COLS if any(c in r for r in rows)]
+    cols = [*BASE_COLS, *dims_all, *DETAIL_COLS[:-2], *used_imgs, *attrs_all, "url", "status"]
     with open(args.out, "w", newline="", encoding="utf-8-sig") as f:   # utf-8-sig: opens cleanly in Excel
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()

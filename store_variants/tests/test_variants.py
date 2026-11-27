@@ -84,7 +84,7 @@ class T(unittest.TestCase):
         self.assertNotIn("ASIN", r)
         self.assertEqual(r["about_this_item"], "Fit: Slim Fit | Care: Machine wash")
         self.assertEqual(r["description"], "Premium checkered shirt. Breathable cotton.")
-        self.assertEqual(r["main_image"], "https://m.media-amazon.com/images/I/shirt.jpg")
+        self.assertEqual(r["image_1"], "https://m.media-amazon.com/images/I/shirt.jpg")
         self.assertEqual(len(fetched), 3)  # every variant page opened
 
     def test_fast_mode(self):
